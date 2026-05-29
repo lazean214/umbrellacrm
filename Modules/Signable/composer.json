@@ -1,0 +1,10 @@
+{
+    "name": "modules/signable",
+    "description": "Signable module",
+    "type": "library",
+    "autoload": {
+        "psr-4": {
+            "Modules\\Signable\\App\\": "app/"
+        }
+    }
+}
