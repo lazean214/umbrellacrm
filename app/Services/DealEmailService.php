@@ -2,14 +2,14 @@
 
 namespace App\Services;
 
-use Throwable;
-use App\Models\Deal;
-use App\Models\EmailTemplate;
-use App\Models\DealEmailLog;
 use App\Mail\DealEmailMailable;
+use App\Models\Deal;
+use App\Models\DealEmailLog;
+use App\Models\EmailTemplate;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 class DealEmailService
 {
@@ -56,14 +56,21 @@ class DealEmailService
                 $user,
             );
 
+        $renderAsHtml =
+            $template->editor_mode === 'builder'
+            || (bool) ($template->is_html ?? true);
+
         $body =
             $customBody
             ?: EmailTemplateParser::parse(
-                $template->body,
+                $template->editor_mode === 'builder'
+                    ? ($template->sections ?? [])
+                    : $template->body,
                 $deal,
                 $contact,
                 $company,
                 $user,
+                $renderAsHtml,
             );
 
         /*
@@ -82,11 +89,9 @@ class DealEmailService
                 ->map(function ($file) {
 
                     return [
-                        'path' =>
-                            $file->file_path,
+                        'path' => $file->file_path,
 
-                        'name' =>
-                            $file->file_name,
+                        'name' => $file->file_name,
                     ];
                 })
                 ->toArray();
@@ -101,21 +106,19 @@ class DealEmailService
             collect(
                 $manualAttachments
             )
-            ->map(function (
-                $path
-            ) {
+                ->map(function (
+                    $path
+                ) {
 
-                return [
-                    'path' =>
-                        $path,
+                    return [
+                        'path' => $path,
 
-                    'name' =>
-                        basename(
+                        'name' => basename(
                             $path
                         ),
-                ];
-            })
-            ->toArray();
+                    ];
+                })
+                ->toArray();
 
         /*
         |--------------------------------------------------------------------------
@@ -137,58 +140,45 @@ class DealEmailService
 
         $log =
             DealEmailLog::create([
-                'deal_id' =>
-                    $deal->id,
+                'deal_id' => $deal->id,
 
-                'contact_id' =>
-                    $contact?->id,
+                'contact_id' => $contact?->id,
 
-                'company_id' =>
-                    $company?->id,
+                'company_id' => $company?->id,
 
-                'user_id' =>
-                    $user?->id,
+                'user_id' => $user?->id,
 
-                'email_template_id' =>
-                    $template->id,
+                'email_template_id' => $template->id,
 
-                'to_email' =>
-                    $to,
+                'to_email' => $to,
 
-                'subject' =>
-                    $subject,
+                'subject' => $subject,
 
-                'body' =>
-                    $body,
+                'body' => $body,
 
-                'status' =>
-                    'pending',
+                'status' => 'pending',
             ]);
 
         try {
 
             Mail::to($to)->send(
                 new DealEmailMailable(
-                    subjectLine:
-                        $subject,
+                    subjectLine: $subject,
 
-                    bodyContent:
-                        $body,
+                    bodyContent: $body,
 
-                    emailAttachments:
-                        $attachments,
+                    isHtml: $renderAsHtml,
+
+                    emailAttachments: $attachments,
                 )
             );
 
             $log->update([
-                'status' =>
-                    'sent',
+                'status' => 'sent',
 
-                'sent_at' =>
-                    now(),
+                'sent_at' => now(),
 
-                'error_message' =>
-                    null,
+                'error_message' => null,
             ]);
 
             /*
@@ -198,8 +188,7 @@ class DealEmailService
             */
 
             foreach (
-                $manualAttachments
-                as $path
+                $manualAttachments as $path
             ) {
 
                 Storage::disk(
@@ -212,11 +201,9 @@ class DealEmailService
         } catch (Throwable $e) {
 
             $log->update([
-                'status' =>
-                    'failed',
+                'status' => 'failed',
 
-                'error_message' =>
-                    $e->getMessage(),
+                'error_message' => $e->getMessage(),
             ]);
 
             throw $e;

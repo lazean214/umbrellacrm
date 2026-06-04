@@ -9,17 +9,29 @@ use App\Enums\InternalCompany;
 use Livewire\WithFileUploads;
 use Illuminate\Support\Facades\DB;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
+use App\Models\User;
+use App\Models\Team;
 
 new class extends Component
 {
     use WithFileUploads;
     public int $dealId;
-
+    public $owners = [];
     public $internalCompanies = [
         ['id' => 1, 'name' => InternalCompany::UMBRELLACOMPANY->value],
         ['id' => 2, 'name' => InternalCompany::CHURCHILL_KNIGHT_UMBRELLA->value],
         ['id' => 3, 'name' => InternalCompany::CHURCHILL_KNIGHT_ASSOCIATES->value],
     ];
+
+    public $companies = [];
+    // Autocomplete state
+    public array $consultantSuggestions = [];
+    public bool  $showConsultantDropdown = false;
+
+    // Add these for Deal Owner Autocomplete
+    public string $ownerSearch = '';
+    public array $ownerSuggestions = [];
+    public bool $showOwnerDropdown = false;
 
     // Deal Details
     public $name;
@@ -69,6 +81,7 @@ new class extends Component
     public $starter_form;
     public $tax_code;
     public $contract_recieved_date;
+    public $created_at;
 
     /*
     |--------------------------------------------------------------------------
@@ -92,16 +105,33 @@ new class extends Component
 
 
 
-    public function mount(int $dealId)
-    {
-        $this->dealId = $dealId;
-        $this->loadDeal();
+public function mount(int $dealId)
+{
+    $this->dealId = $dealId;
+
+    // Load owners FIRST
+    $this->owners = User::select('id', 'name')->get();
+
+    // Then load deal
+    $this->loadDeal();
+
+    $user = auth()->user();
+
+    if (
+        $user &&
+        $user->isSalesTeam() &&
+        $this->deals->user_id !== $user->id
+    ) {
+        abort(403, 'You are not authorised to view this deal.');
     }
+}
+
+
 
     private function loadDeal(): void
     {
-        $this->deals = Deal::with('contacts', 'companies', 'media')->findOrFail($this->dealId);
-
+        $this->deals = Deal::with('contacts', 'companies', 'media', 'signableEnvelopes', 'user')->findOrFail($this->dealId);
+        
         $this->name               = $this->deals->name;
         $this->amount             = $this->deals->amount;
         $this->stage              = $this->deals->stage;
@@ -109,7 +139,13 @@ new class extends Component
         $this->margin_agreed      = $this->deals->margin_agreed;
         $this->recruitment_agency = $this->deals->recruitment_agency;
         $this->consultant_name    = $this->deals->consultant_name;
-        $this->user_id            = $this->deals->user_id;
+        $this->user_id = $this->deals->user_id;
+
+        // Pre-fill owner autocomplete
+        $this->ownerSearch =
+            $this->owners
+                ->firstWhere('id', $this->user_id)
+                ?->name ?? '';
 
         $this->date_sent          = $this->deals->date_sent;
         $this->date_signed        = $this->deals->date_signed;
@@ -150,146 +186,324 @@ new class extends Component
         $this->bank           = $contact->bank           ?? '';
         $this->account_number = $contact->account_number ?? '';
         $this->sort_code      = $contact->sort_code      ?? '';
+        $this->created_at     = $this->deals->created_at ?? null;
+    }
+
+    public function canEdit(): bool
+    {
+        $user = auth()->user();
+
+        if (! $user) {
+            return false;
+        }
+
+        // Sales team can only edit their own deals
+        if ($user->isSalesTeam()) {
+            return $this->deals->user_id === $user->id;
+        }
+
+        return true;
+    }
+
+    public function canChangeStage(string $stage): bool
+    {
+        $user = auth()->user();
+
+        if (! $user) {
+            return false;
+        }
+
+        // If current deal stage is already outside the user's allowed stages,
+        // they cannot move it anywhere — the deal is locked for this user.
+        if ($user->isSalesTeam() && ! $user->canMoveToStage($this->deals->stage->value)) {
+            return false;
+        }
+
+        return $user->canMoveToStage($stage);
     }
 
     public function setStage(string $stage): void
-    {
-        $this->stage = $stage;
-
-        $this->deals->update(['stage' => $stage]);
-
-        session()->flash('success', 'Stage updated.');
+{
+    if (! $this->canEdit()) {
+        $this->dispatch('notify', type: 'error', message: 'You can only edit your own deals.');
+        return;
     }
 
-    public function save(): void
+    if (! $this->canChangeStage($stage)) {
+        $this->dispatch('notify', type: 'error', message: 'You are not authorised to move deals to this stage.');
+        return;
+    }
+
+    $oldStage = $this->deals->stage->value;
+    
+    $this->deals->update([
+        'stage' => $stage,
+    ]);
+    
+    // Log the stage change
+    $user = auth()->user();
+    $reason = $user->isSalesTeam() ? 'Sales Team action' : ($user->isComplianceTeam() ? 'Compliance Team action' : 'System action');
+    $this->deals->logStageChange($oldStage, $stage, $reason);
+
+    $this->stage = $stage;
+    $this->deals->refresh();
+
+    $this->dispatch(
+        'notify',
+        type: 'success',
+        message: 'Deal stage updated.'
+    );
+}
+
+
+    // Live search called as user types consultant name
+    public function updatedConsultantName()
     {
-        $this->validate([
-            'name'            => 'required|string|max:255',
-            'amount'          => 'nullable|numeric',
-            'agency_deal_value' => 'nullable|numeric',
-            'margin_agreed'   => 'nullable|numeric',
-            'email'           => 'nullable|email',
-            'date_sent'       => 'nullable|date',
-            'date_signed'     => 'nullable|date',
-            'date_set_up'     => 'nullable|date',
-            'date_logged'     => 'nullable|date',
-            'date_of_birth'   => 'nullable|date',
-             // Multiple files
-            'compliance_documents.*' =>
-                'nullable|file|max:20480|mimes:pdf,doc,docx,xls,xlsx,jpg,jpeg,png',
+        $query = trim($this->consultant_name);
 
-            'contract_documents.*' =>
-                'nullable|file|max:20480|mimes:pdf,doc,docx,xls,xlsx,jpg,jpeg,png',
-        ]);
-
-        // Save deal
-        $this->deals->update([
-            'name'               => $this->name,
-            'amount'             => $this->amount,
-            'stage'              => $this->stage,
-            'agency_deal_value'  => $this->agency_deal_value,
-            'margin_agreed'      => $this->margin_agreed,
-            'recruitment_agency' => $this->recruitment_agency,
-            'consultant_name'    => $this->consultant_name,
-            'date_sent'          => $this->date_sent,
-            'date_signed'        => $this->date_signed,
-            'who_signed'         => $this->who_signed,
-            'signed_doc'         => $this->signed_doc,
-            'right_to_work'      => $this->right_to_work,
-            'proof_of_address'   => $this->proof_of_address,
-            'photo_id_passport'  => $this->photo_id_passport,
-            'mda_setup'          => $this->mda_setup,
-            'mda_reference_number' => $this->mda_reference_number,
-            'date_set_up'        => $this->date_set_up,
-            'remittance_received' => $this->remittance_received,
-            'date_logged'        => $this->date_logged,
-            'starter_checklist_recieved_date' => $this->starter_checklist_recieved_date,
-            'starter_form'                     => $this->starter_form,
-            'tax_code'                         => $this->tax_code,
-            'contract_recieved_date'           => $this->contract_recieved_date,
-        ]);
-
-        // Save primary contact
-        $contact = $this->deals->contacts()->first();
-        if ($contact) {
-            $contact->update([
-                'first_name'     => $this->first_name,
-                'last_name'      => $this->last_name,
-                'email'          => $this->email,
-                'phone'          => $this->phone,
-                'gender'         => $this->gender,
-                'date_of_birth'  => $this->date_of_birth,
-                'marital_status' => $this->marital_status,
-                'street_address' => $this->street_address,
-                'city'           => $this->city,
-                'state'          => $this->state,
-                'postal_code'    => $this->postal_code,
-                'country'        => $this->country,
-                'ni_number'      => $this->ni_number,
-                'bank'           => $this->bank,
-                'account_number' => $this->account_number,
-                'sort_code'      => $this->sort_code,
-            ]);
+        if (strlen($query) < 1) {
+            $this->consultantSuggestions = [];
+            $this->showConsultantDropdown = false;
+            return;
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Upload Compliance Documents
-        |--------------------------------------------------------------------------
-        */
+        $this->consultantSuggestions = Company::where('name', 'like', "%{$query}%")
+            ->limit(8)
+            ->pluck('name')
+            ->toArray();
 
-        if (!empty($this->compliance_documents)) {
+        $this->showConsultantDropdown = count($this->consultantSuggestions) > 0;
+    }
 
-            foreach ($this->compliance_documents as $file) {
+    public function selectConsultant(string $name)
+    {
+        $this->consultant_name        = $name;
+        $this->consultantSuggestions  = [];
+        $this->showConsultantDropdown = false;
+    }
 
-                $this->deals
-                    ->addMedia($file->getRealPath())
-                    ->usingFileName(
-                         $file->getClientOriginalName()  . '_' .
-                        now()->timestamp
-                    )
-                    ->toMediaCollection(
-                        'compliance_documents'
-                    );
-            }
-        }
+    public function closeConsultantDropdown()
+    {
+        $this->showConsultantDropdown = false;
+    }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Upload Contract Documents
-        |--------------------------------------------------------------------------
-        */
+    // Live search called as user types Deal Owner
+    public function updatedOwnerSearch()
+{
+    $query = trim($this->ownerSearch);
 
-        if (!empty($this->contract_documents)) {
+    $users = $this->owners;
 
-            foreach ($this->contract_documents as $file) {
+    if ($query !== '') {
+        $users = $users->filter(fn ($user) =>
+            str_contains(
+                strtolower($user->name),
+                strtolower($query)
+            )
+        );
+    }
 
-                $this->deals
-                    ->addMedia($file->getRealPath())
-                    ->usingFileName(
-                        $file->getClientOriginalName()  . '_' .
-                        now()->timestamp
-                        
-                    )
-                    ->toMediaCollection(
-                        'contract_documents'
-                    );
-            }
-        }
+    $this->ownerSuggestions = $users
+        ->take(8)
+        ->map(fn ($user) => [
+            'id' => $user->id,
+            'name' => $user->name,
+        ])
+        ->values()
+        ->toArray();
 
-    /*
-    |--------------------------------------------------------------------------
-    | Reset uploads after save
-    |--------------------------------------------------------------------------
-    */
+    $this->showOwnerDropdown =
+        count($this->ownerSuggestions) > 0;
+}
+
+    public function selectOwner(int $id, string $name)
+{
+    $this->user_id = $id;
+    $this->ownerSearch = $name;
 
     $this->reset([
-        'compliance_documents',
-        'contract_documents',
+        'ownerSuggestions',
     ]);
 
-        session()->flash('success', 'Deal saved successfully.');
+    $this->showOwnerDropdown = false;
+}
+
+    public function closeOwnerDropdown()
+    {
+        $this->showOwnerDropdown = false;
     }
+
+
+public function save(): void
+{
+    if (! $this->canEdit()) {
+        $this->dispatch('notify', type: 'error', message: 'You can only edit your own deals.');
+        return;
+    }
+
+    // Get original values before update
+    $originalDeal = $this->deals->replicate();
+    $originalStage = $this->deals->stage->value;
+
+    $this->validate([
+        'name' => 'required|string|max:255',
+        'user_id' => 'required|exists:users,id',
+        'amount' => 'nullable|numeric',
+        'agency_deal_value' => 'nullable|numeric',
+        'margin_agreed' => 'nullable|numeric',
+        'email' => 'nullable|email',
+        'date_sent' => 'nullable|date',
+        'date_signed' => 'nullable|date',
+        'date_set_up' => 'nullable|date',
+        'date_logged' => 'nullable|date',
+        'date_of_birth' => 'nullable|date',
+        'compliance_documents.*' => 'nullable|file|max:20480|mimes:pdf,doc,docx,xls,xlsx,jpg,jpeg,png',
+        'contract_documents.*' => 'nullable|file|max:20480|mimes:pdf,doc,docx,xls,xlsx,jpg,jpeg,png',
+    ]);
+
+    // Save deal
+    $this->deals->update([
+        'name' => $this->name,
+        'user_id' => $this->user_id,
+        'amount' => $this->amount,
+        'stage' => $this->stage,
+        'agency_deal_value' => $this->agency_deal_value,
+        'margin_agreed' => $this->margin_agreed,
+        'recruitment_agency' => $this->recruitment_agency,
+        'consultant_name' => $this->consultant_name,
+        'date_sent' => $this->date_sent,
+        'date_signed' => $this->date_signed,
+        'who_signed' => $this->who_signed,
+        'signed_doc' => $this->signed_doc,
+        'right_to_work' => $this->right_to_work,
+        'proof_of_address' => $this->proof_of_address,
+        'photo_id_passport' => $this->photo_id_passport,
+        'mda_setup' => $this->mda_setup,
+        'mda_reference_number' => $this->mda_reference_number,
+        'date_set_up' => $this->date_set_up,
+        'remittance_received' => $this->remittance_received,
+        'date_logged' => $this->date_logged,
+        'starter_checklist_recieved_date' => $this->starter_checklist_recieved_date,
+        'starter_form' => $this->starter_form,
+        'tax_code' => $this->tax_code,
+        'contract_recieved_date' => $this->contract_recieved_date,
+    ]);
+
+    // Log field changes (excluding stage changes)
+    $this->deals->logChanges($originalDeal);
+
+    // Log stage change if it changed
+    if ($originalStage !== $this->deals->stage->value) {
+        $user = auth()->user();
+        $reason = $user->isSalesTeam() ? 'Sales Team action' : ($user->isComplianceTeam() ? 'Compliance Team action' : 'System action');
+        $this->deals->logStageChange($originalStage, $this->deals->stage->value, $reason);
+    }
+
+    // Check for owner change specifically
+    if ($originalDeal->user_id != $this->user_id) {
+        $newOwner = User::find($this->user_id);
+        $oldOwner = User::find($originalDeal->user_id);
+        $this->deals->logOwnerChange(
+            $originalDeal->user_id,
+            $this->user_id,
+            $oldOwner?->name,
+            $newOwner?->name
+        );
+    }
+
+    // Sync company relationship based on consultant_name
+    if (!empty($this->consultant_name) && $originalDeal->consultant_name !== $this->consultant_name) {
+        $company = Company::firstOrCreate(
+            ['name' => $this->consultant_name],
+        );
+
+        // Sync so this company is the sole primary company on the deal
+        $this->deals->companies()->syncWithPivotValues(
+            [$company->id],
+            ['is_primary' => true],
+        );
+
+        // Log association change
+        $this->deals->logAssociationChange('company', 'updated', $company, 
+            "Consultant/Agency changed from \"{$originalDeal->consultant_name}\" to \"{$this->consultant_name}\"");
+
+        // Also ensure the primary contact is linked to this company
+        $primaryContact = $this->deals->contacts()->first();
+        if ($primaryContact && !$company->contacts()->where('contacts.id', $primaryContact->id)->exists()) {
+            $company->contacts()->attach($primaryContact->id);
+        }
+
+        $this->company_name = $company->name;
+    }
+
+    // Save primary contact
+    $contact = $this->deals->contacts()->first();
+    $originalContact = $contact ? $contact->replicate() : null;
+    
+    if ($contact) {
+        $contact->update([
+            'first_name' => $this->first_name,
+            'last_name' => $this->last_name,
+            'email' => $this->email,
+            'phone' => $this->phone,
+            'gender' => $this->gender,
+            'date_of_birth' => $this->date_of_birth,
+            'marital_status' => $this->marital_status,
+            'street_address' => $this->street_address,
+            'city' => $this->city,
+            'state' => $this->state,
+            'postal_code' => $this->postal_code,
+            'country' => $this->country,
+            'ni_number' => $this->ni_number,
+            'bank' => $this->bank,
+            'account_number' => $this->account_number,
+            'sort_code' => $this->sort_code,
+        ]);
+        
+        // Log contact changes
+        if ($originalContact) {
+            $contactFields = ['first_name', 'last_name', 'email', 'phone'];
+            foreach ($contactFields as $field) {
+                if ($contact->$field != $originalContact->$field) {
+                    $this->deals->logFieldUpdate("contact_{$field}", $originalContact->$field, $contact->$field,
+                        "Contact {$field} changed from \"{$originalContact->$field}\" to \"{$contact->$field}\"");
+                }
+            }
+        }
+    }
+
+    // Upload compliance documents
+    if (!empty($this->compliance_documents)) {
+        foreach ($this->compliance_documents as $file) {
+            $this->deals
+                ->addMedia($file->getRealPath())
+                ->usingFileName(now()->timestamp . '_' . $file->getClientOriginalName())
+                ->toMediaCollection('compliance_documents');
+        }
+        
+        // Log document upload
+        $this->deals->logFieldUpdate('compliance_documents', 'No documents', count($this->compliance_documents) . ' document(s) uploaded',
+            count($this->compliance_documents) . ' compliance document(s) uploaded');
+    }
+
+    // Upload contract documents
+    if (!empty($this->contract_documents)) {
+        foreach ($this->contract_documents as $file) {
+            $this->deals
+                ->addMedia($file->getRealPath())
+                ->usingFileName(now()->timestamp . '_' . $file->getClientOriginalName())
+                ->toMediaCollection('contract_documents');
+        }
+        
+        // Log document upload
+        $this->deals->logFieldUpdate('contract_documents', 'No documents', count($this->contract_documents) . ' document(s) uploaded',
+            count($this->contract_documents) . ' contract document(s) uploaded');
+    }
+
+    $this->reset(['compliance_documents', 'contract_documents']);
+
+    session()->flash('success', 'Deal saved successfully.');
+}
 
     public function disregard(): void
     {
@@ -398,372 +612,34 @@ $stageConfig = [
 
         setTimeout(() => show = false, 3000);
     "
-    class="fixed top-5 right-5 z-50"
->
+    class="fixed top-5 right-5 z-50">
 
-    <div
-        x-show="show"
-        x-transition
-        class="px-5 py-3 rounded-xl shadow-xl text-sm font-medium"
-        :class="{
-            'bg-emerald-500 text-white': type === 'success',
-            'bg-red-500 text-white': type === 'error'
-        }"
-    >
-        <span x-text="message"></span>
+        <div
+            x-show="show"
+            x-transition
+            class="px-5 py-3 rounded-xl shadow-xl text-sm font-medium"
+            :class="{
+                'bg-emerald-500 text-white': type === 'success',
+                'bg-red-500 text-white': type === 'error'
+            }">
+            <span x-text="message"></span>
+        </div>
     </div>
 
-</div>
-<div class="w-full mb-6 px-4">
-    <div class="flex w-full overflow-hidden rounded-2xl border border-slate-100 shadow-sm bg-slate-100 dark:bg-slate-800 dark:border-slate-700">
+    @include('components.deals.partials.views.⚡stage-navigator')
 
-        @foreach ($stages as $listStage)
-            @php
-                $cfg = $stageConfig[$listStage->value] ?? [
-                    'accent' => '#64748b',
-                    'label' => ucwords($listStage->value),
-                ];
-
-                $isActive = $stage === $listStage->value;
-            @endphp
-
-            <button
-                wire:click="setStage('{{ $listStage->value }}')"
-                class="relative flex-1 py-2 text-center transition-all duration-300 border border-slate-200 hover:opacity-90 focus:outline-none"
-
-                style="
-                    background-color: {{ $isActive ? $cfg['accent'] : '#e2e8f0' }};
-                    color: {{ $isActive ? 'white' : '#475569' }};
-                "
-            >
-                {{-- subtle separator --}}
-                @if(!$loop->first)
-                    <div class="absolute left-0 top-3 bottom-3 w-px bg-white/20 dark:bg-slate-700/20"></div>
-                @endif
-
-                <div class="flex flex-col items-center justify-center gap-1">
-                    <span class="text-sm font-semibold">
-                        {{ $cfg['label'] }}
-                    </span>
-
-                    @if($isActive)
-                        <span class="text-[11px] opacity-80 mt-1">
-                            Current Stage
-                        </span>
-                    @endif
-                </div>
-            </button>
-
-        @endforeach
-
-    </div>
-</div>
 <div class="flex flex-wrap">
     
-   <aside class="w-2/6 mb-24">
-        <section class="bg-white text-black rounded-lg shadow p-4 dark:bg-slate-800 dark:text-slate-100">
-            <h2 class="text-sm uppercase font-bold mb-4">Deal Details</h2>
-            <label class="text-xs font-bold uppercase tracking-wider">Deal Name</label>
-            <input type="text" wire:model="name" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-            <label class="text-xs font-bold uppercase tracking-wider">TimeSheet Value</label>
-            <input type="number" wire:model="amount" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-            <label class="text-xs font-bold uppercase tracking-wider">Stage</label>
-            <input type="text" wire:model="stage" readonly class="text-sm w-full capitalize border border-gray-200 bg-gray-50 rounded text-gray-500 px-3 py-2 mb-4 cursor-not-allowed dark:bg-slate-800 dark:text-slate-100" title="Use the stage selector above mb-4" />
+    <aside class="w-2/6 mb-24">
+        @include('components.deals.partials.views.⚡deals-details')
+        
+        @include('components.deals.partials.views.⚡worker-details')
 
-             <label class="text-xs font-bold uppercase tracking-wider">Recruitment Agency</label>
-            <input type="text" wire:model="recruitment_agency" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-                <label class="text-xs font-bold uppercase tracking-wider">Consultant Name</label>
-            <input type="text" wire:model="consultant_name" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-                <label class="text-xs font-bold uppercase tracking-wider">Agency Deal Value</label>
-            <input type="number" wire:model="agency_deal_value" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-                <label class="text-xs font-bold uppercase tracking-wider">Margin Agreed</label>
-            <input type="number" wire:model="margin_agreed" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-        </section>
+        @include('components.deals.partials.views.⚡mda-details')
 
-        <section class="bg-white text-black rounded-lg shadow p-4 mt-4 dark:bg-slate-800 dark:text-slate-100">
-            <h2 class="text-sm uppercase font-bold mb-4">Worker Details</h2>
-            <label class="text-xs font-bold uppercase tracking-wider">First Name</label>
-            <input type="text" wire:model="first_name" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-            <label class="text-xs font-bold uppercase tracking-wider">Last Name</label>
-            <input type="text" wire:model="last_name" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-            <label class="text-xs font-bold uppercase tracking-wider">Email</label>
-            <input type="email" wire:model="email" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-            <label class="text-xs font-bold uppercase tracking-wider">Date of Birth</label>
-            <input type="date" wire:model="date_of_birth" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-            
-            <label class="text-xs font-bold uppercase tracking-wider">Gender</label>
-            <select wire:model="gender" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4">
-                <option value="" disabled selected>Select Gender</option>
-                <option value="Male">Male</option>  
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-            </select>   
-           <label class="text-xs font-bold uppercase tracking-wider">Marital Status</label>
-            <select wire:model="marital_status" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4">
-                <option value="" disabled selected>Select Marital Status</option>
-                <option value="Single">Single</option>
-                <option value="Married">Married</option>
-                <option value="Divorced">Divorced</option>
-                <option value="Widowed">Widowed</option>
-            </select>
-            <label class="text-xs font-bold uppercase tracking-wider">Phone</label>
-            <input type="text" wire:model="phone" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-            <label class="text-xs font-bold uppercase tracking-wider">Street Address</label>
-            <input type="text" wire:model="street_address" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-            <label class="text-xs font-bold uppercase tracking-wider">City</label>
-            <input type="text" wire:model="city" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-            <label class="text-xs font-bold uppercase tracking-wider">State</label>
-            <input type="text" wire:model="state" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-            <label class="text-xs font-bold uppercase tracking-wider">Postal Code</label>
-            <input type="text" wire:model="postal_code" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-            <label class="text-xs font-bold uppercase tracking-wider">Country</label>
-            <input type="text" wire:model="country" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-            <label class="text-xs font-bold uppercase tracking-wider">NI Number</label>
-            <input type="text" wire:model="ni_number" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-            <label class="text-xs font-bold uppercase tracking-wider">Bank</label>
-            <input type="text" wire:model="bank" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-            <label class="text-xs font-bold uppercase tracking-wider">Account Number</label>
-            <input type="text" wire:model="account_number" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-            <label class="text-xs font-bold uppercase tracking-wider">Sort Code</label>
-            <input type="text" wire:model="sort_code" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
-
-        </section>
-
-        <section class="bg-white text-black rounded-lg shadow p-4 mt-4 dark:bg-slate-800 dark:text-slate-100">
-            <h2 class="text-sm uppercase font-bold mb-4">Compliance Details</h2>
-            <label class="text-xs font-bold uppercase tracking-wider">Signable</label>
-
-           <label class="text-xs font-bold uppercase tracking-wider">
-            Date Sent </label>
-                <input type="date" wire:model="date_sent" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2" />
-            
-           <label class="text-xs font-bold uppercase tracking-wider">
-            Date Signed  </label>
-                <input type="date" wire:model="date_signed" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition  mb-2" />
-           
-           <label class="text-xs font-bold uppercase tracking-wider">
-            Who Signed?  </label>
-                <input type="text" wire:model="who_signed" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2" />
-           
-            <label class="text-xs font-bold uppercase tracking-wider">
-            New Starter Checklist Recieved Date  </label>
-                <input type="date" wire:model="starter_checklist_recieved_date" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2" />
-           
-            <label class="text-xs font-bold uppercase tracking-wider">
-            Starter Form  </label>
-            <select wire:model="starter_form" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2">
-                <option value="" class="italic" disabled>Select Code</option>
-                <option value="A">A</option>
-                <option value="B">B</option>
-                <option value="C">C</option>
-            </select>
-           
-            <label class="text-xs font-bold uppercase tracking-wider">
-            Tax Code </label>        
-            <select wire:model="tax_code" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2">
-                <option value="" class="italic" disabled>Select Code</option>
-                <option value="1257L">1257L</option>
-                <option value="1257L1">1257L1</option>
-                <option value="BR">BR</option>  
-           </select>
-            <label class="text-xs font-bold uppercase tracking-wider">
-            Employee Contract Recieved Date  </label>
-                <input type="date" wire:model="contract_recieved_date" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2" />
-           
-       
-
-
-           <label class="text-xs font-bold uppercase tracking-wider">
-            Right to Work Document</label>
-            <select wire:model="photo_id_passport" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2">
-                <option value="" disabled selected>Select Document</option>
-                <option value="UK Passport">UK Passport</option>
-                <option value="Foreign Passport">Foreign Passport</option>
-                <option value="Irish Passport">Irish Passport</option>
-                <option value="Driving License">Driving License</option>
-            </select>
-             
-            
-           <label class="text-xs font-bold uppercase tracking-wider">
-            Proof of Address</label>
-                <select type="text" wire:model="proof_of_address" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2">
-                <option value="" disabled selected>Select Option</option>
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-            </select>
-            
-           <label class="text-xs font-bold uppercase tracking-wider">
-            Right to Work</label>
-                <select type="text" wire:model="right_to_work" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2" >
-                <option value="" disabled selected>Select Option</option>
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-            </select>
-            
-<div class="space-y-5">
-
-    {{-- Compliance Documents --}}
-    <div>
-
-        <label
-            class="text-xs font-bold uppercase tracking-wider block mb-2"
-        >
-            Compliance Documents
-        </label>
-
-        <input
-            type="file"
-            wire:model="compliance_documents"
-            multiple
-            class="block w-full pl-4 pr-3 py-2 text-sm
-            bg-white dark:bg-slate-800
-            border border-slate-200 dark:border-slate-700
-            rounded-lg text-slate-900 dark:text-slate-100
-            focus:outline-none focus:ring-2
-            focus:ring-indigo-500/30
-            focus:border-indigo-500 transition"
-        >
-
-        <div
-            wire:loading
-            wire:target="compliance_documents"
-            class="text-xs text-indigo-500 mt-2"
-        >
-            Uploading compliance files...
-        </div>
-
-        @error('compliance_documents.*')
-            <span class="text-red-500 text-xs">
-                {{ $message }}
-            </span>
-        @enderror
-
-        {{-- Preview selected files --}}
-        @if($compliance_documents)
-
-            <div class="mt-3 space-y-1">
-
-                @foreach($compliance_documents as $file)
-
-                    <div
-                        class="text-xs text-slate-600
-                        dark:text-slate-300"
-                    >
-                        📄 {{ $file->getClientOriginalName() }}
-                    </div>
-
-                @endforeach
-
-            </div>
-
-        @endif
-
-    </div>
-
-
-    {{-- Contract Documents --}}
-    <div>
-
-        <label
-            class="text-xs font-bold uppercase tracking-wider block mb-2"
-        >
-            Contract Documents
-        </label>
-
-        <input
-            type="file"
-            wire:model="contract_documents"
-            multiple
-            class="block w-full pl-4 pr-3 py-2 text-sm
-            bg-white dark:bg-slate-800
-            border border-slate-200 dark:border-slate-700
-            rounded-lg text-slate-900 dark:text-slate-100
-            focus:outline-none focus:ring-2
-            focus:ring-indigo-500/30
-            focus:border-indigo-500 transition"
-        >
-
-        <div
-            wire:loading
-            wire:target="contract_documents"
-            class="text-xs text-indigo-500 mt-2"
-        >
-            Uploading contract files...
-        </div>
-
-            @error('contract_documents.*')
-                <span class="text-red-500 text-xs">
-                    {{ $message }}
-                </span>
-            @enderror
-
-            @if($contract_documents)
-
-                <div class="mt-3 space-y-1">
-
-                    @foreach($contract_documents as $file)
-
-                        <div
-                            class="text-xs text-slate-600
-                            dark:text-slate-300"
-                        >
-                            📄 {{ $file->getClientOriginalName() }}
-                        </div>
-
-                    @endforeach
-
-                </div>
-
-            @endif
-
-        </div>
-
-    </div>
-
-
-
-        </section>
-
-        <section class="bg-white text-black rounded-lg shadow p-4 mt-4 dark:bg-slate-800 dark:text-slate-100">
-            <h2 class="text-sm uppercase font-bold mb-4">MDA</h2>
-           <label class="text-xs font-bold uppercase tracking-wider">
-            MDA Setup
-            <select name="mda_setup" wire:model="mda_setup" class="text-sm w-full border border-gray-300 capitalize rounded text-black px-3 py-2 mb-4">
-                <option value="" disabled selected>Select MDA Setup</option>
-                @foreach ($internalCompanies as $company)
-                    <option value="{{ $company['name'] }}" class="text-black ">{{ $company['name'] }}</option>
-                @endforeach
-            </select>
-            </label>
-           <label class="text-xs font-bold uppercase tracking-wider">
-            MDA Reference Number</label>
-                <input type="text" wire:model="mda_reference_number" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2" />
-            
-           <label class="text-xs font-bold uppercase tracking-wider">
-            Date Set Up</label>
-                <input type="date" wire:model="date_set_up" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2" />
-            
-           <label class="text-xs font-bold uppercase tracking-wider">
-            Remittance Received?</label>
-                <select wire:model="remittance_received" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2" />
-                <option value="" disabled>Select Option</option>
-                <option value="No" {{ $remittance_received === 'No' ? 'selected' : '' }}>No</option>
-                <option value="Yes" {{ $remittance_received === 'Yes' ? 'selected' : '' }}>Yes</option>
-            </select>
-            
-           <label class="text-xs font-bold uppercase tracking-wider">
-            Date Logged</label>
-                <input type="date" wire:model="date_logged" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2" />
-            
-        </section>
-        <section class="bg-white text-black rounded-lg shadow p-4 mt-4">
-            <h2 class="text-sm uppercase font-bold mb-4">Company Details</h2>
-            <label class="text-xs font-bold uppercase tracking-wider">Company Name</label>
-            <input type="text" wire:model="company_name" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2" />
-        </section>
-   </aside>
-   <main class="w-4/6 px-5">
-
+    </aside>
+    <main class="w-4/6 px-5">
+    <section  class="">
     <div class="mb-6">
         <div class="inline-flex w-full rounded-2xl bg-slate-100 dark:bg-slate-800/70 p-1 shadow-sm border border-slate-200 dark:border-slate-700">
 
@@ -829,34 +705,52 @@ $stageConfig = [
                     Welcome Email
                 </div>
             </button>
-
+            <button
+            wire:click="$set('openTabs', 'history')"
+            @class([
+                'flex-1 rounded-xl px-5 py-3 text-sm font-semibold transition-all duration-300',
+                'bg-indigo-500 text-white shadow-md' => $openTabs === 'history',
+                'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-slate-700/50' => $openTabs !== 'history',
+            ])
+        >
+            <div class="flex items-center justify-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                History
+            </div>
+        </button>
         </div>
     </div>
 
     @if ($openTabs === 'overview')
-     <section class="bg-white text-black rounded-lg p-4 mb-4 dark:bg-slate-800 dark:text-slate-100">
+     <section class="bg-gray-100 text-black rounded-lg bg border dark:border-slate-700 p-4 mb-4 dark:bg-slate-800 dark:text-slate-100">
         <h2 class="text-sm uppercase font-bold">Deal Overview </h2>
         @include('signable::components.envelope.wizard', ['deal' => $deals ?? null, 'templates' => $templates ?? []])
       
 
     </section>
     @elseif ($openTabs === 'activities')
-
-
-    <section class="bg-white text-black rounded-lg p-4 mb-4 dark:bg-slate-800 dark:text-slate-100">
+    <section class="bg-gray-100 text-black rounded-lg border dark:border-slate-700 p-4 mb-4 dark:bg-slate-800 dark:text-slate-100">
         <h2 class="text-sm uppercase font-bold mb-4">Activity Feed</h2>
         @livewire('activities.task.index', ['dealId' => $deals->id ?? null])
     </section>
 
     @elseif ($openTabs === 'email')
-     <section class="bg-white text-black rounded-lg p-4 mb-4 dark:bg-slate-800 dark:text-slate-100">
+     <section class="bg-gray-100 text-black rounded-lg border dark:border-slate-700 p-4 mb-4 dark:bg-slate-800 dark:text-slate-100">
         <h2 class="text-sm uppercase font-bold mb-4">Worker Welcome Email</h2>
          @livewire('activities.email.index', ['dealId' => $deals->id ?? null])
     </section>
-
+    {{-- Add this after the other tab content --}}
+    @elseif ($openTabs === 'history')
+    <section class="bg-gray-100 text-black rounded-lg border dark:border-slate-700 p-4 mb-4 dark:bg-slate-800 dark:text-slate-100">
+        <h2 class="text-sm uppercase font-bold mb-6">Deal Activity History</h2>
+        @include('components.deals.partials.⚡history-timeline', ['deal' => $deals])
+    </section>
+    
     @endif
-
-    <section class="bg-white text-black rounded-lg p-4 mb-4 dark:bg-slate-800 dark:text-slate-100">
+ @include('components.deals.partials.views.⚡compliance-details')
+    <section class="bg-gray-100 text-black rounded-lg border dark:border-slate-700 p-4 mb-4 dark:bg-slate-800 dark:text-slate-100">
         <h2 class="text-sm uppercase font-bold mb-4">Attached Documents</h2>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
 

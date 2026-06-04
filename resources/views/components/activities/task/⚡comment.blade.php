@@ -10,7 +10,7 @@ new class extends Component
     public int $activityId;
 
     public string $comment = '';
-    public string $status  = '';
+    public string $status  = 'open'; // Default assigned to prevent validation errors
 
     public bool  $showForm       = false;
 
@@ -46,31 +46,46 @@ new class extends Component
     }
 
     public function addComment(): void
-    {
-        $this->validate([
-            'comment' => 'required|string|max:2000',
-            'status'  => 'required|string|in:open,in_progress,done,cancelled',
-        ]);
+{
+    $this->validate([
+        'comment' => 'required|string|max:2000',
+        // ✅ Added 'pending' to the allowed statuses array
+        'status'  => 'required|string|in:pending,open,in_progress,done,cancelled',
+    ]);
 
-        // Update parent activity status
-        ActivityLog::where('id', $this->activityId)
-            ->update(['status' => $this->status]);
+    // Update parent activity status
+    ActivityLog::where('id', $this->activityId)
+        ->update(['status' => $this->status]);
 
-        // Create comment as child activity log entry
-        ActivityLog::create([
-            'deal_id'       => $this->activity->deal_id,
-            'parent_id'     => $this->activityId,
-            'type'          => 'comment',
-            'activity_name' => 'Comment',
-            'message'       => $this->comment,
-            'user_email'    => Auth::user()?->email ?? '',
-            'status'        => $this->status,
-        ]);
+    $newComment = ActivityLog::create([
+        'deal_id'       => $this->activity->deal_id,
+        'parent_id'     => $this->activityId,
+        'type'          => 'comment',
+        'activity_name' => 'Comment',
+        'message'       => $this->comment,
+        'user_email'    => Auth::user()?->email ?? 'anonymous@system.com',
+        'status'        => $this->status,
+    ]);
 
-        $this->reset('comment');
-        $this->showForm = false;
-        unset($this->activity, $this->comments);
+    // Find the deal and its owner
+    $deal = \App\Models\Deal::with('user')->find($this->activity->deal_id);
+
+    if ($deal && $deal->user) {
+        // 🧪 TEMPORARY: Comment out the self-notification check for local testing
+        // if ($deal->user->email !== Auth::user()?->email) {
+        
+        $deal->user->notify(new \App\Notifications\DealCommentedNotification($newComment));
+        
+        // }
     }
+
+    // Always dispatch the refresh event so your UI stays synchronized
+    $this->dispatch('notification-updated');
+
+    $this->reset('comment');
+    $this->showForm = false;
+    unset($this->activity, $this->comments);
+}
 
     public function startReply(int $commentId): void
     {
@@ -92,15 +107,31 @@ new class extends Component
 
         $parent = ActivityLog::findOrFail($this->replyingToId);
 
-        ActivityLog::create([
+        // ✅ Assigned to a precise instance variable
+        $newReply = ActivityLog::create([
             'deal_id'       => $this->activity->deal_id,
             'parent_id'     => $this->replyingToId,
             'type'          => 'comment',
             'activity_name' => 'Reply',
             'message'       => $this->replyComment,
-            'user_email'    => Auth::user()?->email ?? '',
+            'user_email'    => Auth::user()?->email ?? 'anonymous@system.com',
             'status'        => $parent->status,
         ]);
+
+        // Find the original author of the comment being replied to
+        $originalCommenter = \App\Models\User::where('email', $parent->user_email)->first();
+
+        if ($originalCommenter) {
+            // 🧪 TEMPORARY: Comment out the self-notification check for local testing
+            // if ($originalCommenter->email !== Auth::user()?->email) {
+            
+            $originalCommenter->notify(new \App\Notifications\DealCommentedNotification($newReply));
+            
+            // }
+        }
+
+        // Always dispatch the refresh event so your UI stays synchronized
+        $this->dispatch('notification-updated');
 
         $this->replyingToId = null;
         $this->replyComment = '';
@@ -143,7 +174,6 @@ new class extends Component
 
     public function deleteComment(int $commentId): void
     {
-        // Also delete any replies to this comment
         ActivityLog::where('parent_id', $commentId)->delete();
         ActivityLog::where('id', $commentId)->delete();
         unset($this->comments);
@@ -170,14 +200,14 @@ new class extends Component
     {{-- Comment list --}}
     <div class="space-y-4 mb-6">
         @forelse ($this->comments as $comment)
-            <div class="flex flex-col gap-1">
+            <div class="flex flex-col gap-1" wire:key="comment-box-{{ $comment->id }}">
                 <div class="flex items-start gap-3">
                     <div class="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600">
                         {{ strtoupper(substr($comment->user_email, 0, 1)) }}
                     </div>
                     <div class="flex-1">
                         <div class="flex items-center gap-2 mb-1">
-                            <span class="text-sm font-medium text-gray-800">{{ $comment->user_email }}</span>
+                            <span class="text-sm font-medium text-gray-800 dark:text-slate-200">{{ $comment->user_email }}</span>
                             <span class="text-xs text-gray-400">{{ $comment->created_at->diffForHumans() }}</span>
                             @if ($comment->status)
                                 <span @class([
@@ -194,14 +224,14 @@ new class extends Component
 
                         {{-- Edit mode --}}
                         @if ($editingId === $comment->id)
-                            <div class="space-y-2">
+                            <div class="space-y-2" @click.stop>
                                 <textarea
                                     wire:model="editComment"
                                     class="w-full border border-gray-300 rounded px-3 py-2 text-sm text-black"
                                     rows="2"
                                 ></textarea>
-                                <select wire:model="editStatus" class="border border-gray-300 rounded px-2 py-1 text-sm">
-                                    <option value="open">Open</option>
+                                <select wire:model="status" class="border border-gray-300 rounded px-3 py-2 text-sm text-black">
+                                    <option value="pending">Pending</option> <option value="open">Open</option>
                                     <option value="in_progress">In Progress</option>
                                     <option value="done">Done</option>
                                     <option value="cancelled">Cancelled</option>
@@ -212,7 +242,7 @@ new class extends Component
                                 </div>
                             </div>
                         @else
-                            <p class="text-sm text-gray-700">{{ $comment->message }}</p>
+                            <p class="text-sm text-gray-700 dark:text-slate-300">{{ $comment->message }}</p>
                             <div class="flex gap-3 mt-1">
                                 <button wire:click="startReply({{ $comment->id }})" class="text-xs text-blue-500 hover:underline">Reply</button>
                                 @if (Auth::user()?->email === $comment->user_email)
@@ -231,16 +261,16 @@ new class extends Component
                 @if ($replies->isNotEmpty())
                     <div class="ml-11 space-y-3 mt-2">
                         @foreach ($replies as $reply)
-                            <div class="flex items-start gap-2 border-l-2 border-gray-200 pl-3">
+                            <div class="flex items-start gap-2 border-l-2 border-gray-200 pl-3" wire:key="reply-item-{{ $reply->id }}">
                                 <div class="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500">
                                     {{ strtoupper(substr($reply->user_email, 0, 1)) }}
                                 </div>
                                 <div class="flex-1">
                                     <div class="flex items-center gap-2 mb-0.5">
-                                        <span class="text-xs font-medium text-gray-700">{{ $reply->user_email }}</span>
+                                        <span class="text-xs font-medium text-gray-700 dark:text-slate-300">{{ $reply->user_email }}</span>
                                         <span class="text-xs text-gray-400">{{ $reply->created_at->diffForHumans() }}</span>
                                     </div>
-                                    <p class="text-sm text-gray-700">{{ $reply->message }}</p>
+                                    <p class="text-sm text-gray-700 dark:text-slate-400">{{ $reply->message }}</p>
                                     @if (Auth::user()?->email === $reply->user_email)
                                         <button wire:click="deleteComment({{ $reply->id }})" wire:confirm="Delete this reply?" class="text-xs text-red-400 hover:underline mt-1">Delete</button>
                                     @endif
@@ -252,7 +282,7 @@ new class extends Component
 
                 {{-- Inline reply box --}}
                 @if ($replyingToId === $comment->id)
-                    <div class="ml-11 mt-2">
+                    <div class="ml-11 mt-2" @click.stop>
                         <textarea
                             wire:model="replyComment"
                             class="w-full border border-gray-300 rounded px-3 py-2 text-sm text-black"
@@ -272,9 +302,10 @@ new class extends Component
     </div>
 
     {{-- Add comment --}}
-    <div class="border-t border-gray-100 pt-4">
+    <div class="border-t border-gray-100 pt-4 dark:border-slate-700">
         @if (!$showForm)
             <button
+                type="button"
                 wire:click="$set('showForm', true)"
                 class="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1"
             >
@@ -284,28 +315,36 @@ new class extends Component
                 Add comment
             </button>
         @else
-            <textarea
-                wire:model="comment"
-                class="w-full border border-gray-300 rounded px-3 py-2 text-sm text-black mb-2"
-                rows="3"
-                placeholder="Add a comment…"
-                autofocus
-            ></textarea>
-            <div class="flex items-center justify-between">
-                <select wire:model="status" class="border border-gray-300 rounded px-3 py-2 text-sm">
-                    <option value="open">Open</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="done">Done</option>
-                    <option value="cancelled">Cancelled</option>
-                </select>
-                <div class="flex gap-2">
-                    <button
-                        wire:click="$set('showForm', false)"
-                        class="text-sm text-gray-400 px-3 py-2 rounded border hover:bg-gray-50"
-                    >Cancel</button>
-                    <button wire:click="addComment" class="bg-green-500 text-white text-sm px-4 py-2 rounded">
-                        Comment
-                    </button>
+            <div @click.stop class="space-y-2"> {{-- ✅ Form wrapping container to isolate focus clicks --}}
+                <textarea
+                    wire:model="comment"
+                    class="w-full border border-gray-300 rounded px-3 py-2 text-sm text-black"
+                    rows="3"
+                    placeholder="Add a comment…"
+                    autofocus
+                ></textarea>
+                
+                <div class="flex items-center justify-between">
+                    <select wire:model="status" class="border border-gray-300 rounded px-3 py-2 text-sm text-black">
+                        <option value="open">Open</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="done">Done</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                    <div class="flex gap-2">
+                        <button
+                            type="button"
+                            wire:click="$set('showForm', false)"
+                            class="text-sm text-gray-400 px-3 py-2 rounded border hover:bg-gray-50 dark:hover:bg-slate-700"
+                        >Cancel</button>
+                        <button 
+                            type="button"
+                            wire:click="addComment" 
+                            class="bg-green-500 text-white text-sm px-4 py-2 rounded shadow hover:bg-green-600"
+                        >
+                            Comment
+                        </button>
+                    </div>
                 </div>
             </div>
         @endif

@@ -2,6 +2,7 @@
 
 use Livewire\Component;
 use App\Models\Deal;
+use App\Models\User;
 use Illuminate\Support\Str;
 use App\Enums\DealStage;
 
@@ -10,6 +11,58 @@ new class extends Component
     public $deals = [];
     public $view = 'kanban'; // 'kanban' or 'table'
     public array $stages = [];
+
+    // --- Pagination (table view) ---
+    public int $perPage = 25;
+    public int $currentPage = 1;
+    public int $totalDeals = 0;
+    public int $totalPages = 1;
+    public int $paginationFrom = 0;
+    public int $paginationTo = 0;
+
+    // --- Lazy load (kanban view) ---
+    public int $kanbanLoadedCount = 50;
+    public bool $kanbanHasMore = false;
+
+    // --- Column Visibility ---
+    /** @var array<string> */
+    public array $visibleColumns = [
+        'name', 'owner', 'contact', 'company', 'amount', 'stage', 'created_at',
+    ];
+
+    /**
+     * All available columns with labels grouped by source.
+     *
+     * @var array<string, array{label: string, group: string}>
+     */
+    public const AVAILABLE_COLUMNS = [
+        // Deal fields
+        'name'                    => ['label' => 'Deal Name',               'group' => 'Deal'],
+        'amount'                  => ['label' => 'Amount',                   'group' => 'Deal'],
+        'stage'                   => ['label' => 'Stage',                    'group' => 'Deal'],
+        'recruitment_agency'      => ['label' => 'Recruitment Agency',       'group' => 'Deal'],
+        'consultant_name'         => ['label' => 'Consultant Name',          'group' => 'Deal'],
+        'agency_deal_value'       => ['label' => 'Agency Deal Value',        'group' => 'Deal'],
+        'margin_agreed'           => ['label' => 'Margin Agreed',            'group' => 'Deal'],
+        'date_sent'               => ['label' => 'Date Sent',                'group' => 'Deal'],
+        'date_signed'             => ['label' => 'Date Signed',              'group' => 'Deal'],
+        'who_signed'              => ['label' => 'Who Signed',               'group' => 'Deal'],
+        'right_to_work'           => ['label' => 'Right to Work',            'group' => 'Deal'],
+        'mda_reference_number'    => ['label' => 'MDA Reference',            'group' => 'Deal'],
+        'date_set_up'             => ['label' => 'Date Set Up',              'group' => 'Deal'],
+        'tax_code'                => ['label' => 'Tax Code',                 'group' => 'Deal'],
+        'created_at'              => ['label' => 'Created',                  'group' => 'Deal'],
+        // Owner (user) fields
+        'owner'                   => ['label' => 'Owner',                    'group' => 'Owner'],
+        'owner_email'             => ['label' => 'Owner Email',              'group' => 'Owner'],
+        // Contact fields
+        'contact'                 => ['label' => 'Contact',                  'group' => 'Contact'],
+        // Company fields
+        'company'                 => ['label' => 'Company',                  'group' => 'Company'],
+        'company_email'           => ['label' => 'Company Email',            'group' => 'Company'],
+        'company_phone'           => ['label' => 'Company Phone',            'group' => 'Company'],
+        'company_domain'          => ['label' => 'Company Domain',           'group' => 'Company'],
+    ];
 
     // --- CRM Live Filter States ---
     public string $filterDealName    = '';
@@ -22,15 +75,59 @@ new class extends Component
     public $dateFrom    = null;
     public $dateTo      = null;
 
-    public function updatedFilterDealName()    { $this->loadDeals(); }
-    public function updatedFilterOwner()       { $this->loadDeals(); }
-    public function updatedFilterContact()     { $this->loadDeals(); }
-    public function updatedFilterCompanyName() { $this->loadDeals(); }
-    public function updatedFilterStage()       { $this->loadDeals(); }
-    public function updatedMinAmount()         { $this->loadDeals(); }
-    public function updatedMaxAmount()         { $this->loadDeals(); }
-    public function updatedDateFrom()          { $this->loadDeals(); }
-    public function updatedDateTo()            { $this->loadDeals(); }
+    /**
+     * Whether the dateFrom was auto-set to start of month (not user-defined).
+     * Used to trigger auto-widening when results are sparse.
+     */
+    public bool $isDefaultDateRange = false;
+
+    // --- BATCH OPERATIONS ---
+    public array $selectedDeals = [];
+    public bool $selectAll = false;
+    public string $batchOperation = ''; // 'owner', 'stage', 'delete'
+    public string $batchOwnerValue = '';
+    public string $batchStageValue = '';
+    public bool $showBatchModal = false;
+    public bool $showConfirmModal = false;
+    public string $confirmMessage = '';
+    public array $allUsers = [];
+    public array $allCompanies = [];
+
+    /**
+     * Shared reset-and-reload for every filter/paging change.
+     */
+    private function onFilterChanged(): void
+    {
+        $this->currentPage      = 1;
+        $this->kanbanLoadedCount = 50;
+        $this->persistState();
+        $this->loadDeals();
+        $this->resetBatchState();
+    }
+
+    public function updatedFilterDealName(): void    { $this->onFilterChanged(); }
+    public function updatedFilterOwner(): void       { $this->onFilterChanged(); }
+    public function updatedFilterContact(): void     { $this->onFilterChanged(); }
+    public function updatedFilterCompanyName(): void { $this->onFilterChanged(); }
+    public function updatedFilterStage(): void       { $this->onFilterChanged(); }
+    public function updatedMinAmount(): void         { $this->onFilterChanged(); }
+    public function updatedMaxAmount(): void         { $this->onFilterChanged(); }
+    public function updatedDateFrom(): void
+    {
+        // Once the user touches the date, it's no longer the auto-default
+        $this->isDefaultDateRange = false;
+        $this->onFilterChanged();
+    }
+
+    public function updatedDateTo(): void          { $this->onFilterChanged(); }
+
+    public function updatedPerPage(): void
+    {
+        $this->currentPage = 1;
+        $this->persistState();
+        $this->loadDeals();
+        $this->resetBatchState();
+    }
 
     public function mount()
     {
@@ -41,12 +138,162 @@ new class extends Component
             DealStage::READY_FOR_PAYMENT,
             DealStage::PAID,
         ]);
+        $this->allUsers     = User::orderBy('name')->get(['id', 'name', 'email'])->toArray();
+        $this->allCompanies = \App\Models\Company::orderBy('name')->get(['id', 'name'])->toArray();
+        
+        // ── Restore persisted view state from session ──
+        $state = session('deals_view_state', []);
+
+        $this->view              = $state['view']              ?? 'kanban';
+        $this->perPage           = $state['perPage']           ?? 25;
+        $this->visibleColumns    = $state['visibleColumns']    ?? ['name', 'owner', 'contact', 'company', 'amount', 'stage', 'created_at'];
+        $this->filterDealName    = $state['filterDealName']    ?? '';
+        $this->filterOwner       = $state['filterOwner']       ?? '';
+        $this->filterContact     = $state['filterContact']     ?? '';
+        $this->filterCompanyName = $state['filterCompanyName'] ?? '';
+        $this->filterStage       = $state['filterStage']       ?? '';
+        $this->minAmount         = $state['minAmount']         ?? null;
+        $this->maxAmount         = $state['maxAmount']         ?? null;
+        $this->isDefaultDateRange = $state['isDefaultDateRange'] ?? false;
+
+        // If a date range was explicitly persisted, restore it.
+        // Otherwise default to start of current month so the initial load is fast.
+        if (array_key_exists('dateFrom', $state)) {
+            $this->dateFrom = $state['dateFrom'];
+            $this->dateTo   = $state['dateTo'];
+        } else {
+            $this->dateFrom           = now()->startOfMonth()->toDateString();
+            $this->dateTo             = null;
+            $this->isDefaultDateRange = true;
+        }
+
         $this->loadDeals();
+
+        // Auto-widen: if we loaded with the default month filter and got < 100
+        // results, silently remove the date restriction so nothing is hidden.
+        if ($this->isDefaultDateRange && $this->getTotalResultCount() < 100) {
+            $this->dateFrom           = null;
+            $this->isDefaultDateRange = false;
+            $this->loadDeals();
+        }
     }
 
-    public function loadDeals()
+    /**
+     * Persist the current UI state to the session.
+     */
+    private function persistState(): void
     {
-        $query = Deal::query()->with('contacts', 'companies', 'user');
+        session(['deals_view_state' => [
+            'view'                => $this->view,
+            'perPage'             => $this->perPage,
+            'visibleColumns'      => $this->visibleColumns,
+            'filterDealName'      => $this->filterDealName,
+            'filterOwner'         => $this->filterOwner,
+            'filterContact'       => $this->filterContact,
+            'filterCompanyName'   => $this->filterCompanyName,
+            'filterStage'         => $this->filterStage,
+            'minAmount'           => $this->minAmount,
+            'maxAmount'           => $this->maxAmount,
+            'dateFrom'            => $this->dateFrom,
+            'dateTo'              => $this->dateTo,
+            'isDefaultDateRange'  => $this->isDefaultDateRange,
+        ]]);
+    }
+
+    /**
+     * Total results across current filters — works for both views.
+     * In table view $totalDeals is set by loadDeals(); in kanban we count $deals.
+     */
+    private function getTotalResultCount(): int
+    {
+        return $this->view === 'table'
+            ? $this->totalDeals
+            : count($this->deals);
+    }
+
+    /**
+     * Get the currently authenticated user
+     */
+    private function getCurrentUser(): ?User
+    {
+        return auth()->user();
+    }
+
+    /**
+     * Check if current user is in Sales Team
+     */
+    public function isSalesTeam(): bool
+    {
+        $user = $this->getCurrentUser();
+        return $user && $user->isSalesTeam();
+    }
+
+    /**
+     * Check if current user is in Compliance Team
+     */
+    public function isComplianceTeam(): bool
+    {
+        $user = $this->getCurrentUser();
+        return $user && $user->isComplianceTeam();
+    }
+
+    /**
+     * Get allowed stages for current user
+     */
+    public function getAllowedStagesForUser(): array
+    {
+        $user = $this->getCurrentUser();
+        return $user ? $user->getAllowedDealStages() : [];
+    }
+
+    /**
+     * Check if current user can move deals to stages
+     */
+    public function canEditDealStage(): bool
+    {
+        return count($this->getAllowedStagesForUser()) > 0;
+    }
+
+    /**
+     * Check if specific stage can be edited by current user
+     */
+    public function canEditStage($stage, $currentDealStage = null): bool
+    {
+        $user = $this->getCurrentUser();
+        if (!$user) {
+            return false;
+        }
+        // If the deal is already on a restricted stage, Sales cannot move it anywhere
+        if ($currentDealStage && $user->isSalesTeam() && !$user->canMoveToStage($currentDealStage)) {
+            return false;
+        }
+        return $user->canMoveToStage($stage);
+    }
+
+    public function loadDeals(): void
+    {
+        $query = Deal::query()->with([
+            'contacts:id,first_name,last_name',
+            'companies:id,name,email,phone,domain',
+            'user:id,name,email',
+        ]);
+        $user = $this->getCurrentUser();
+
+        // ──────────────────────────────────────
+        // APPLY TEAM RESTRICTIONS
+        // ──────────────────────────────────────
+
+        if ($user) {
+            // Sales Team: Only see their own deals
+            if ($user->isSalesTeam()) {
+                $query->where('user_id', $user->id);
+            }
+            // Compliance Team & no-team users: see all deals
+        }
+
+        // ──────────────────────────────────────
+        // APPLY FILTERS
+        // ──────────────────────────────────────
 
         // Deal name
         if (!empty($this->filterDealName)) {
@@ -95,23 +342,101 @@ new class extends Component
             $query->whereDate('created_at', '<=', $this->dateTo);
         }
 
-        $this->deals = $query->orderBy('created_at', 'desc')->get()->map(function ($deal) {
+        // ──────────────────────────────────────
+        // FETCH — strategy depends on active view
+        // ──────────────────────────────────────
+
+        $mapper = function ($deal) {
             $arr = $deal->toArray();
             $arr['stage'] = $deal->stage instanceof \BackedEnum
                 ? $deal->stage->value
                 : (string) $deal->stage;
             return $arr;
-        })->toArray();
+        };
+
+        if ($this->view === 'table') {
+            // Paginated
+            $this->totalDeals  = $query->count();
+            $this->totalPages  = max(1, (int) ceil($this->totalDeals / $this->perPage));
+            $this->currentPage = min($this->currentPage, $this->totalPages);
+
+            $this->paginationFrom = $this->totalDeals === 0 ? 0 : (($this->currentPage - 1) * $this->perPage) + 1;
+            $this->paginationTo   = min($this->currentPage * $this->perPage, $this->totalDeals);
+
+            $this->deals = $query->orderBy('created_at', 'desc')
+                ->skip(($this->currentPage - 1) * $this->perPage)
+                ->take($this->perPage)
+                ->get()
+                ->map($mapper)
+                ->toArray();
+        } else {
+            // Kanban — lazy load: fetch up to kanbanLoadedCount
+            $total = $query->count();
+
+            $this->kanbanHasMore = $total > $this->kanbanLoadedCount;
+
+            $this->deals = $query->orderBy('created_at', 'desc')
+                ->take($this->kanbanLoadedCount)
+                ->get()
+                ->map($mapper)
+                ->toArray();
+        }
     }
 
-    public function resetFilters()
+    /**
+     * Load the next batch of 50 deals in kanban view.
+     */
+    public function loadMoreKanban(): void
+    {
+        $this->kanbanLoadedCount += 50;
+        $this->loadDeals();
+    }
+
+    public function resetFilters(): void
     {
         $this->reset([
             'filterDealName', 'filterOwner', 'filterContact',
             'filterCompanyName', 'filterStage',
-            'minAmount', 'maxAmount', 'dateFrom', 'dateTo',
+            'minAmount', 'maxAmount', 'dateTo',
         ]);
+
+        // Reset to the default month window, not all-time
+        $this->dateFrom           = now()->startOfMonth()->toDateString();
+        $this->isDefaultDateRange = true;
+        $this->currentPage        = 1;
+        $this->kanbanLoadedCount  = 50;
+        $this->persistState();
         $this->loadDeals();
+        $this->resetBatchState();
+
+        // Auto-widen if sparse
+        if ($this->isDefaultDateRange && $this->getTotalResultCount() < 100) {
+            $this->dateFrom           = null;
+            $this->isDefaultDateRange = false;
+            $this->loadDeals();
+        }
+    }
+
+    public function goToPage(int $page): void
+    {
+        $this->currentPage = max(1, min($page, $this->totalPages));
+        $this->loadDeals();
+        $this->resetBatchState();
+    }
+
+    /**
+     * Explicitly load all-time data (user clicked "View all time →").
+     */
+    public function showAllTime(): void
+    {
+        $this->dateFrom           = null;
+        $this->dateTo             = null;
+        $this->isDefaultDateRange = false;
+        $this->currentPage        = 1;
+        $this->kanbanLoadedCount  = 50;
+        $this->persistState();
+        $this->loadDeals();
+        $this->resetBatchState();
     }
 
     public function hasActiveFilters(): bool
@@ -123,21 +448,398 @@ new class extends Component
             || !empty($this->filterStage)
             || ($this->minAmount !== null && $this->minAmount !== '')
             || ($this->maxAmount !== null && $this->maxAmount !== '')
-            || !empty($this->dateFrom)
+            // Only count dateFrom as active if the user explicitly set it
+            || (!$this->isDefaultDateRange && !empty($this->dateFrom))
             || !empty($this->dateTo);
     }
 
+    /**
+     * Update deal stage with authorization checks
+     * 
+     * - Sales Team: Can only move to Doc Sent, Doc Signed, Compliant
+     * - Compliance Team: Can move to any stage
+     * - Must own the deal (Sales Team) or be in Compliance Team
+     */
     public function updateStage($dealId, $newStage)
     {
+        $user = $this->getCurrentUser();
+
+        if (!$user) {
+            $this->dispatch('error', message: 'Unauthorized');
+            return;
+        }
+
         $deal = Deal::findOrFail($dealId);
+        $oldStage = $deal->stage->value;
+
+
+        // ─────────────────────────────
+        // AUTHORIZATION
+        // ─────────────────────────────
+
+        if ($user->isSalesTeam()) {
+
+            // Must own deal
+            if ($deal->user_id !== $user->id) {
+                $this->dispatch(
+                    'error',
+                    message: 'You can only edit your own deals'
+                );
+                return;
+            }
+
+            // Locked stages
+            if (!$user->canMoveToStage($deal->stage->value)) {
+                $this->dispatch(
+                    'error',
+                    message: 'This deal is managed by the Compliance Team.'
+                );
+                return;
+            }
+
+            // Target stage restriction
+            if (!$user->canMoveToStage($newStage)) {
+                $allowedStages = implode(
+                    ', ',
+                    $user->getAllowedDealStages()
+                );
+
+                $this->dispatch(
+                    'error',
+                    message: "You can only move to: {$allowedStages}"
+                );
+
+                return;
+            }
+        }
+
+        // ─────────────────────────────
+        // SAVE TO DATABASE
+        // ─────────────────────────────
+
         $deal->stage = DealStage::from($newStage);
         $deal->save();
+
+
+        // Log the stage change with reason
+        $reason = $user->isSalesTeam() ? 'Sales Team action' : 'Compliance Team action';
+        $deal->logStageChange($oldStage, $newStage, $reason);
+
+        // ─────────────────────────────
+        // UPDATE LOCAL ARRAY ONLY
+        // NO FULL loadDeals()
+        // ─────────────────────────────
+
+        foreach ($this->deals as &$existingDeal) {
+
+            if ($existingDeal['id'] == $dealId) {
+                $existingDeal['stage'] = $newStage;
+                break;
+            }
+        }
+
+        unset($existingDeal);
+
+        $this->dispatch(
+            'success',
+            message: 'Deal moved successfully'
+        );
+    }
+
+    // ─────────────────────────────────────────────────
+    // BATCH OPERATIONS
+    // ─────────────────────────────────────────────────
+
+    /**
+     * Reset batch operation state
+     */
+    public function resetBatchState()
+    {
+        $this->selectedDeals = [];
+        $this->selectAll = false;
+        $this->batchOperation = '';
+        $this->batchOwnerValue = '';
+        $this->batchStageValue = '';
+        $this->showBatchModal = false;
+        $this->showConfirmModal = false;
+    }
+
+    /**
+     * Toggle select all checkbox
+     * Shows confirmation modal if filters are active
+     */
+    public function toggleSelectAll()
+    {
+        $this->selectAll = !$this->selectAll;
+
+        if ($this->selectAll) {
+            // If filters are active, show confirmation modal
+            if ($this->hasActiveFilters()) {
+                $this->showConfirmModal = true;
+                $dealCount = count($this->deals);
+                $this->confirmMessage = "Select all {$dealCount} deals from the filtered results? "
+                    . "This will apply the batch operation to all matching records.";
+            } else {
+                // No filters, just select all visible deals
+                $this->selectedDeals = array_map(fn($deal) => $deal['id'], $this->deals);
+            }
+        } else {
+            // Deselect all
+            $this->selectedDeals = [];
+        }
+    }
+
+    /**
+     * Confirm select all from modal
+     */
+    public function confirmSelectAll()
+    {
+        $this->selectedDeals = array_map(fn($deal) => $deal['id'], $this->deals);
+        $this->showConfirmModal = false;
+    }
+
+    /**
+     * Cancel select all and close modal
+     */
+    public function cancelSelectAll()
+    {
+        $this->selectAll = false;
+        $this->showConfirmModal = false;
+    }
+
+    /**
+     * Toggle individual deal selection
+     */
+    public function toggleDealSelection($dealId)
+    {
+        if (in_array($dealId, $this->selectedDeals)) {
+            $this->selectedDeals = array_filter(
+                $this->selectedDeals,
+                fn($id) => $id !== $dealId
+            );
+            $this->selectAll = false;
+        } else {
+            $this->selectedDeals[] = $dealId;
+            // Check if all visible deals are now selected
+            $visibleIds = array_map(fn($deal) => $deal['id'], $this->deals);
+            if (count($this->selectedDeals) === count($visibleIds) && 
+                empty(array_diff($visibleIds, $this->selectedDeals))) {
+                $this->selectAll = true;
+            }
+        }
+    }
+
+    /**
+     * Get count of selected deals
+     */
+    public function getSelectedCount(): int
+    {
+        return count($this->selectedDeals);
+    }
+
+    /**
+     * Open batch operation modal
+     */
+    public function openBatchModal($operation)
+    {
+        if (empty($this->selectedDeals)) {
+            $this->dispatch('error', message: 'Please select at least one deal');
+            return;
+        }
+
+        $this->batchOperation = $operation;
+        $this->batchOwnerValue = '';
+        $this->batchStageValue = '';
+        $this->showBatchModal = true;
+    }
+
+    /**
+     * Confirm batch owner update
+     */
+    public function confirmBatchUpdateOwner()
+    {
+        if (empty($this->batchOwnerValue)) {
+            $this->dispatch('error', message: 'Please select an owner');
+            return;
+        }
+
+        $selectedCount = count($this->selectedDeals);
+        $this->confirmMessage = "Update owner for {$selectedCount} deal(s)?";
+        $this->showBatchModal = false;
+        $this->showConfirmModal = true;
+    }
+
+    /**
+     * Confirm batch stage update
+     */
+    public function confirmBatchUpdateStage()
+    {
+        if (empty($this->batchStageValue)) {
+            $this->dispatch('error', message: 'Please select a stage');
+            return;
+        }
+
+        $selectedCount = count($this->selectedDeals);
+        $this->confirmMessage = "Update stage for {$selectedCount} deal(s)?";
+        $this->showBatchModal = false;
+        $this->showConfirmModal = true;
+    }
+
+    /**
+     * Confirm batch delete
+     */
+    public function confirmBatchDelete()
+    {
+        $selectedCount = count($this->selectedDeals);
+        $this->confirmMessage = "Delete {$selectedCount} deal(s)? This action cannot be undone.";
+        $this->showBatchModal = false;
+        $this->showConfirmModal = true;
+    }
+
+    /**
+     * Execute batch owner update
+     */
+    public function executeBatchUpdateOwner()
+    {
+        $user = $this->getCurrentUser();
+
+        if (!$user) {
+            $this->dispatch('error', message: 'Unauthorized');
+            return;
+        }
+
+        // Authorization: Only compliance can batch update owner
+        if (!$this->isComplianceTeam()) {
+            $this->dispatch('error', message: 'Only Compliance Team can perform batch updates');
+            return;
+        }
+
+        Deal::whereIn('id', $this->selectedDeals)->update([
+            'user_id' => $this->batchOwnerValue
+        ]);
+
         $this->loadDeals();
+        $this->resetBatchState();
+
+        $this->dispatch('success', message: 'Owner updated for ' . count($this->selectedDeals) . ' deal(s)');
+    }
+
+    /**
+     * Execute batch stage update
+     */
+    public function executeBatchUpdateStage()
+    {
+        $user = $this->getCurrentUser();
+
+        if (!$user) {
+            $this->dispatch('error', message: 'Unauthorized');
+            return;
+        }
+
+        // Authorization: Only compliance can batch update stage
+        if (!$this->isComplianceTeam()) {
+            $this->dispatch('error', message: 'Only Compliance Team can perform batch updates');
+            return;
+        }
+
+        Deal::whereIn('id', $this->selectedDeals)->update([
+            'stage' => $this->batchStageValue
+        ]);
+
+        $this->loadDeals();
+        $this->resetBatchState();
+
+        $this->dispatch('success', message: 'Stage updated for ' . count($this->selectedDeals) . ' deal(s)');
+    }
+
+    /**
+     * Execute batch delete
+     */
+    public function executeBatchDelete()
+    {
+        $user = $this->getCurrentUser();
+
+        if (!$user) {
+            $this->dispatch('error', message: 'Unauthorized');
+            return;
+        }
+
+        // Authorization: Only compliance can batch delete
+        if (!$this->isComplianceTeam()) {
+            $this->dispatch('error', message: 'Only Compliance Team can delete deals');
+            return;
+        }
+
+        $count = count($this->selectedDeals);
+        Deal::whereIn('id', $this->selectedDeals)->delete();
+
+        $this->loadDeals();
+        $this->resetBatchState();
+
+        $this->dispatch('success', message: "{$count} deal(s) deleted successfully");
+    }
+
+    /**
+     * Close modals and reset
+     */
+    public function closeBatchModal()
+    {
+        $this->showBatchModal = false;
+        $this->showConfirmModal = false;
+    }
+
+    /**
+     * Confirm from confirmation modal
+     */
+    public function confirmBatchAction()
+    {
+        match($this->batchOperation) {
+            'owner' => $this->executeBatchUpdateOwner(),
+            'stage' => $this->executeBatchUpdateStage(),
+            'delete' => $this->executeBatchDelete(),
+        };
+
+        $this->showConfirmModal = false;
     }
 
     public function setView($view)
     {
         $this->view = $view;
+        $this->currentPage = 1;
+        $this->kanbanLoadedCount = 50;
+        $this->persistState();
+        $this->loadDeals();
+    }
+
+    public function toggleColumn(string $column): void
+    {
+        if (in_array($column, $this->visibleColumns)) {
+            // Always keep at least one column visible
+            if (count($this->visibleColumns) > 1) {
+                $this->visibleColumns = array_values(
+                    array_filter($this->visibleColumns, fn($c) => $c !== $column)
+                );
+            }
+        } else {
+            $this->visibleColumns[] = $column;
+        }
+
+        $this->persistState();
+    }
+
+    public function exportUrl(): string
+    {
+        return route('deals.export', array_filter([
+            'filterDealName'    => $this->filterDealName ?: null,
+            'filterOwner'       => $this->filterOwner ?: null,
+            'filterContact'     => $this->filterContact ?: null,
+            'filterCompanyName' => $this->filterCompanyName ?: null,
+            'filterStage'       => $this->filterStage ?: null,
+            'minAmount'         => $this->minAmount ?: null,
+            'maxAmount'         => $this->maxAmount ?: null,
+            'dateFrom'          => $this->dateFrom ?: null,
+            'dateTo'            => $this->dateTo ?: null,
+        ]));
     }
 
     public function getDealsByStage($stage)
@@ -149,6 +851,8 @@ new class extends Component
     {
         return collect($this->deals)->where('stage', $stage)->sum('amount');
     }
+
+    
 };
 
 ?>
@@ -174,9 +878,9 @@ $stageConfig = [
         'label'       => 'Doc Signed',
     ],
     'compliant' => [
-        'accent'      => '#d97706',
+        'accent'      => '#4ed386',
         'accentLight' => 'rgba(217,119,6,0.12)',
-        'accentText'  => '#92400e',
+        'accentText'  => '#1b8b41',
         'icon'        => '✅',
         'label'       => 'Compliant',
     ],
@@ -220,559 +924,181 @@ $stageConfig = [
     <div wire:loading.delay class="fixed top-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 z-50 animate-pulse"></div>
 
     {{-- ── Header ── --}}
-    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 dark:border-slate-800 pb-5">
-        <div>
-            <h1 class="text-2xl font-semibold text-slate-900 dark:text-white tracking-tight">
-                {{ __('Deals Pipeline') }}
-            </h1>
-            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Manage your pipeline tracking, stage workflows, and incoming financial volumes.
-            </p>
-        </div>
-
-        {{-- View toggle --}}
-        <div class="inline-flex rounded-lg shadow-sm bg-slate-100 dark:bg-slate-800 p-1 self-start sm:self-center gap-0.5">
-            <button
-                wire:click="setView('kanban')"
-                class="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium rounded-md transition-all duration-150
-                    {{ $view === 'kanban'
-                        ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200/60 dark:ring-slate-600/40'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200' }}"
-            >
-                <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-                    <rect x="1" y="1" width="4" height="14" rx="1.5"/>
-                    <rect x="6" y="1" width="4" height="14" rx="1.5"/>
-                    <rect x="11" y="1" width="4" height="14" rx="1.5"/>
-                </svg>
-                Kanban
-            </button>
-            <button
-                wire:click="setView('table')"
-                class="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium rounded-md transition-all duration-150
-                    {{ $view === 'table'
-                        ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200/60 dark:ring-slate-600/40'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200' }}"
-            >
-                <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-                    <rect x="1" y="1" width="14" height="3" rx="1.5"/>
-                    <rect x="1" y="6" width="14" height="3" rx="1.5"/>
-                    <rect x="1" y="11" width="14" height="3" rx="1.5"/>
-                </svg>
-                Table
-            </button>
-        </div>
-    </div>
-
-    {{-- ── Filters Panel ── --}}
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
-
-        {{-- Filter header bar --}}
-        <div class="flex items-center justify-between px-5 py-3 border-b border-slate-100 dark:border-slate-800">
-            <div class="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z"/>
-                </svg>
-                Filters
-                @if($this->hasActiveFilters())
-                    <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
-                        {{ collect([
-                            $filterDealName, $filterOwner, $filterContact, $filterCompanyName,
-                            $filterStage,
-                            ($minAmount !== null && $minAmount !== '') ? '1' : '',
-                            ($maxAmount !== null && $maxAmount !== '') ? '1' : '',
-                            $dateFrom, $dateTo,
-                        ])->filter()->count() }}
-                    </span>
-                @endif
-            </div>
-            @if($this->hasActiveFilters())
-                <button
-                    wire:click="resetFilters"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition"
-                >
-                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-                    </svg>
-                    Clear all
-                </button>
-            @endif
-        </div>
-
-        {{-- Filter grid body --}}
-        <div class="p-5 space-y-4">
-
-            {{-- Row 1: Deal Name · Owner · Contact --}}
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-
-                <div class="space-y-1.5">
-                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Deal Name</label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                            </svg>
-                        </div>
-                        <input
-                            type="text"
-                            wire:model.live.debounce.250ms="filterDealName"
-                            placeholder="Search deal name…"
-                            class="block w-full pl-8 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 dark:focus:border-indigo-400 transition"
-                        >
-                    </div>
-                </div>
-
-                <div class="space-y-1.5">
-                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Deal Owner</label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-                            </svg>
-                        </div>
-                        <input
-                            type="text"
-                            wire:model.live.debounce.250ms="filterOwner"
-                            placeholder="Owner name…"
-                            class="block w-full pl-8 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 dark:focus:border-indigo-400 transition"
-                        >
-                    </div>
-                </div>
-
-                <div class="space-y-1.5">
-                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Contact Name</label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
-                            </svg>
-                        </div>
-                        <input
-                            type="text"
-                            wire:model.live.debounce.250ms="filterContact"
-                            placeholder="Contact name…"
-                            class="block w-full pl-8 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 dark:focus:border-indigo-400 transition"
-                        >
-                    </div>
-                </div>
-
+    <div class="w-full border-b border-slate-200 dark:border-slate-800 pb-5 mb-4">
+        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-semibold text-slate-900 dark:text-white tracking-tight">
+                    {{ __('Deals Pipeline') }}
+                </h1>
+                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Manage your pipeline tracking, stage workflows, and incoming financial volumes.
+                </p>
             </div>
 
-            {{-- Row 2: Company · Internal Entity · Stage --}}
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-
-                <div class="space-y-1.5">
-                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Company Name</label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
-                            </svg>
-                        </div>
-                        <input
-                            type="text"
-                            wire:model.live.debounce.250ms="filterCompanyName"
-                            placeholder="Company name…"
-                            class="block w-full pl-8 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 dark:focus:border-indigo-400 transition"
-                        >
-                    </div>
+            {{-- View toggle + Export --}}
+            <div class="flex items-center gap-2 shrink-0">
+                <div class="inline-flex rounded-lg shadow-sm bg-slate-100 dark:bg-slate-800 p-1 gap-0.5">
+                    <button
+                        wire:click="setView('kanban')"
+                        class="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium rounded-md transition-all duration-150
+                            {{ $view === 'kanban'
+                                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200/60 dark:ring-slate-600/40'
+                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200' }}"
+                    >
+                        <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
+                            <rect x="1" y="1" width="4" height="14" rx="1.5"/>
+                            <rect x="6" y="1" width="4" height="14" rx="1.5"/>
+                            <rect x="11" y="1" width="4" height="14" rx="1.5"/>
+                        </svg>
+                        Kanban
+                    </button>
+                    <button
+                        wire:click="setView('table')"
+                        class="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium rounded-md transition-all duration-150
+                            {{ $view === 'table'
+                                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200/60 dark:ring-slate-600/40'
+                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200' }}"
+                    >
+                        <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
+                            <rect x="1" y="1" width="14" height="3" rx="1.5"/>
+                            <rect x="1" y="6" width="14" height="3" rx="1.5"/>
+                            <rect x="1" y="11" width="14" height="3" rx="1.5"/>
+                        </svg>
+                        Table
+                    </button>
                 </div>
-
-                <div class="space-y-1.5">
-                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Stage</label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                            </svg>
-                        </div>
-                        <select
-                            wire:model.live="filterStage"
-                            class="block w-full pl-8 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition appearance-none"
-                        >
-                            <option value="">All stages</option>
-                            @foreach($stages as $s)
-                                <option value="{{ $s }}">{{ ucwords($s) }}</option>
-                            @endforeach
-                        </select>
-                        <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
-                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-                            </svg>
-                        </div>
-                    </div>
-                </div>
-
+                @include('components.deals.partials.⚡export', ['exportUrl' => $this->exportUrl()])
             </div>
-
-            {{-- Row 3: Amount range · Date range --}}
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-                <div class="space-y-1.5">
-                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Amount Range (£)</label>
-                    <div class="flex items-center gap-2">
-                        <div class="relative flex-1">
-                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 text-xs font-medium">£</div>
-                            <input
-                                type="number"
-                                wire:model.live.debounce.300ms="minAmount"
-                                placeholder="Min"
-                                min="0"
-                                class="block w-full pl-6 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition"
-                            >
-                        </div>
-                        <span class="text-slate-300 dark:text-slate-600 text-sm shrink-0">→</span>
-                        <div class="relative flex-1">
-                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 text-xs font-medium">£</div>
-                            <input
-                                type="number"
-                                wire:model.live.debounce.300ms="maxAmount"
-                                placeholder="Max"
-                                min="0"
-                                class="block w-full pl-6 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition"
-                            >
-                        </div>
-                    </div>
-                </div>
-
-                <div class="space-y-1.5">
-                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Created Date Range</label>
-                    <div class="flex items-center gap-2">
-                        <div class="relative flex-1">
-                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                                </svg>
-                            </div>
-                            <input
-                                type="date"
-                                wire:model.live="dateFrom"
-                                class="block w-full pl-8 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition"
-                            >
-                        </div>
-                        <span class="text-slate-300 dark:text-slate-600 text-sm shrink-0">→</span>
-                        <div class="relative flex-1">
-                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                                </svg>
-                            </div>
-                            <input
-                                type="date"
-                                wire:model.live="dateTo"
-                                class="block w-full pl-8 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition"
-                            >
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-
-            {{-- Active filter chips --}}
-            @if($this->hasActiveFilters())
-            <div class="flex flex-wrap gap-2 pt-1">
-                @if($filterDealName)
-                    <span class="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-medium bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60">
-                        Deal: <strong>{{ $filterDealName }}</strong>
-                        <button wire:click="$set('filterDealName', '')" class="hover:text-indigo-900 dark:hover:text-indigo-100 transition">
-                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                        </button>
-                    </span>
-                @endif
-                @if($filterOwner)
-                    <span class="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-medium bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800/60">
-                        Owner: <strong>{{ $filterOwner }}</strong>
-                        <button wire:click="$set('filterOwner', '')" class="hover:text-violet-900 dark:hover:text-violet-100 transition">
-                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                        </button>
-                    </span>
-                @endif
-                @if($filterContact)
-                    <span class="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-medium bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800/60">
-                        Contact: <strong>{{ $filterContact }}</strong>
-                        <button wire:click="$set('filterContact', '')" class="hover:text-sky-900 dark:hover:text-sky-100 transition">
-                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                        </button>
-                    </span>
-                @endif
-                @if($filterCompanyName)
-                    <span class="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-medium bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800/60">
-                        Company: <strong>{{ $filterCompanyName }}</strong>
-                        <button wire:click="$set('filterCompanyName', '')" class="hover:text-teal-900 dark:hover:text-teal-100 transition">
-                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                        </button>
-                    </span>
-                @endif
-              
-                @if($filterStage)
-                    <span class="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-medium bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800/60">
-                        Stage: <strong>{{ ucwords($filterStage) }}</strong>
-                        <button wire:click="$set('filterStage', '')" class="hover:text-orange-900 dark:hover:text-orange-100 transition">
-                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                        </button>
-                    </span>
-                @endif
-                @if($minAmount !== null && $minAmount !== '' || $maxAmount !== null && $maxAmount !== '')
-                    <span class="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
-                        Amount: <strong>£{{ $minAmount ?? '0' }} – {{ $maxAmount ? '£'.$maxAmount : '∞' }}</strong>
-                        <button wire:click="$set('minAmount', null); $wire.set('maxAmount', null)" class="hover:text-emerald-900 dark:hover:text-emerald-100 transition">
-                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                        </button>
-                    </span>
-                @endif
-                @if($dateFrom || $dateTo)
-                    <span class="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-medium bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60">
-                        Date: <strong>{{ $dateFrom ?? '…' }} – {{ $dateTo ?? '…' }}</strong>
-                        <button wire:click="$set('dateFrom', null); $wire.set('dateTo', null)" class="hover:text-rose-900 dark:hover:text-rose-100 transition">
-                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                        </button>
-                    </span>
-                @endif
-            </div>
-            @endif
-
         </div>
     </div>
+
+    @include('components.deals.partials.⚡filters')
 
     {{-- ══════════════════════════════════════
          KANBAN BOARD VIEW
     ══════════════════════════════════════ --}}
-    @if($view === 'kanban')
-    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-start">
-        @foreach($stages as $stage)
-        @php
-            $stageDeals = $this->getDealsByStage($stage);
-            $stageSum   = $this->getStageSum($stage);
-            $cfg        = $stageConfig[$stage] ?? [
-                'accent' => '#64748b', 'accentLight' => 'rgba(100,116,139,0.10)',
-                'accentText' => '#475569', 'icon' => '🔹',
-                'label' => ucwords($stage),
-            ];
-        @endphp
-        <div
-            class="flex flex-col bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl min-h-[480px] transition-all duration-200 overflow-hidden"
-            x-on:dragover="onDragOver($event)"
-            x-on:drop="onDrop('{{ $stage }}')"
-            :class="{ 'ring-2 ring-indigo-500/60 dark:ring-indigo-400/60 bg-indigo-50/40 dark:bg-indigo-950/20 scale-[1.01]': draggingId !== null && draggingStage !== '{{ $stage }}' }"
-        >
-            {{-- Column header with color top bar --}}
-            <div class="relative pt-1">
-                {{-- Top accent bar — rendered via inline style, guaranteed to display --}}
-                <div class="h-1 w-full" style="background-color: {{ $cfg['accent'] }};"></div>
+@if($view === 'kanban')
+    <div wire:key="kanban-board-{{ $kanbanLoadedCount }}-{{ $totalDeals }}">
+        @include('components.deals.partials.⚡kanban', [
+            'stageConfig' => $stageConfig
+        ])
 
-                <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-800">
-                    <div class="flex items-center justify-between mb-1.5">
-                        <div class="flex items-center gap-2">
-                            <span class="text-base leading-none">{{ $cfg['icon'] }}</span>
-                            <span class="text-xs font-bold uppercase tracking-wider" style="color: {{ $cfg['accent'] }};">
-                                {{ $cfg['label'] }}
-                            </span>
-                        </div>
-                        {{-- Count badge --}}
-                        <span
-                            class="text-xs font-bold px-2 py-0.5 rounded-full"
-                            style="background-color: {{ $cfg['accentLight'] }}; color: {{ $cfg['accent'] }};"
-                        >
-                            {{ $stageDeals->count() }}
-                        </span>
-                    </div>
-                    {{-- Stage sum --}}
-                    <div class="text-base font-bold text-slate-800 dark:text-slate-100 tabular-nums">
-                        £{{ number_format($stageSum, 0) }}
-                    </div>
-                </div>
-            </div>
-
-            {{-- Cards --}}
-            <div class="flex-1 flex flex-col gap-3 p-3">
-                @forelse($stageDeals as $deal)
-                <div
-                    class="relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 rounded-xl p-3.5 flex items-start gap-3 shadow-sm cursor-grab active:cursor-grabbing group transition-all duration-150 hover:shadow-md"
-                    draggable="true"
-                    x-on:dragstart="onDragStart({{ $deal['id'] }}, '{{ $deal['stage'] }}')"
-                    x-on:dragend="draggingId = null"
-                    wire:key="card-{{ $deal['id'] }}"
-                >
-                    {{-- Left accent bar — inline style so color always renders --}}
-                    <div
-                        class="absolute left-0 top-3 bottom-3 w-[3px] rounded-r-full"
-                        style="background-color: {{ $cfg['accent'] }};"
-                    ></div>
-
-                    {{-- Drag handle --}}
-                    <div class="text-slate-300 dark:text-slate-600 group-hover:text-slate-500 dark:group-hover:text-slate-400 transition text-sm pt-0.5 select-none shrink-0">
-                        ⠿
-                    </div>
-
-                    <div class="flex-1 min-w-0 pl-1">
-                        {{-- Deal name --}}
-                        <p class="text-sm font-semibold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition truncate mb-2">
-                            <a href="{{ route('deals.show', $deal['id']) }}" class="focus:underline outline-none">
-                                {{ $deal['name'] }}
-                            </a>
-                        </p>
-
-                        {{-- Amount + company --}}
-                        <div class="flex items-center justify-between gap-2 mb-3">
-                            <span class="text-sm font-bold text-slate-800 dark:text-white tabular-nums">
-                                £{{ number_format($deal['amount'], 0) }}
-                            </span>
-                            @if(!empty($deal['internal_company']))
-                                <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 shrink-0 truncate max-w-[80px]">
-                                    {{ $deal['internal_company'] }}
-                                </span>
-                            @endif
-                        </div>
-
-                        {{-- Meta rows --}}
-                        <div class="space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
-                            {{-- Created date --}}
-                            <div class="flex items-center gap-1.5">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 shrink-0 opacity-70" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M7 2h1a1 1 0 0 1 1 1v1h5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3V3a1 1 0 0 1 1-1m8 2h1V3h-1zM8 4V3H7v1zM6 5a2 2 0 0 0-2 2v1h15V7a2 2 0 0 0-2-2zM4 18a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V9H4zm8-5h5v5h-5zm1 1v3h3v-3z"/>
-                                </svg>
-                                <span>{{ \Carbon\Carbon::parse($deal['created_at'])->diffForHumans() }}</span>
-                            </div>
-
-                            {{-- Contact --}}
-                            @if(!empty($deal['contacts'][0]))
-                            <div class="flex items-center gap-1.5">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 shrink-0 opacity-70" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
-                                </svg>
-                                <span class="truncate">{{ $deal['contacts'][0]['first_name'] }} {{ $deal['contacts'][0]['last_name'] }}</span>
-                            </div>
-                            @endif
-
-                            {{-- Company --}}
-                            @if(!empty($deal['companies'][0]))
-                            <div class="flex items-center gap-1.5">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 shrink-0 opacity-70" viewBox="0 0 512 512" fill="currentColor">
-                                    <path d="M440 464V16H72v448H16v32h480v-32Zm-32 0H272v-64h-32v64H104V48h304Z"/>
-                                    <path d="M160 304h32v32h-32zm80 0h32v32h-32zm80 0h32v32h-32zm-160-96h32v32h-32zm80 0h32v32h-32zm80 0h32v32h-32zm-160-96h32v32h-32zm80 0h32v32h-32zm80 0h32v32h-32z"/>
-                                </svg>
-                                <span class="truncate">{{ $deal['companies'][0]['name'] }}</span>
-                            </div>
-                            @endif
-
-                            {{-- Owner --}}
-                            <div class="flex items-center gap-1.5 pt-0.5">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 shrink-0 opacity-70" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2zm0 12c-5.33 0-8 2.67-8 4v2h16v-2c0-1.33-2.67-4-8-4z"/>
-                                </svg>
-                                <span class="truncate font-medium">
-                                    {{ $deal['user'] ? $deal['user']['name'] : 'Unassigned' }}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                @empty
-                <div class="flex-1 flex flex-col items-center justify-center text-center p-8 text-slate-400 dark:text-slate-600 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl mt-1">
-                    <svg class="w-6 h-6 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                    </svg>
-                    <span class="text-xs">No deals</span>
-                </div>
-                @endforelse
-            </div>
-
-            {{-- Drop zone indicator --}}
+        @if($kanbanHasMore)
             <div
-                class="text-center text-xs font-semibold px-3 py-3 border-t border-dashed border-indigo-200 dark:border-indigo-800/60 text-indigo-600 dark:text-indigo-400 bg-indigo-50/80 dark:bg-indigo-950/30"
-                x-show="draggingId !== null && draggingStage !== '{{ $stage }}'"
-                x-transition:enter="transition ease-out duration-100"
-                x-transition:enter-start="opacity-0 translate-y-1"
-                x-transition:enter-end="opacity-100 translate-y-0"
+                x-data
+                x-intersect.threshold.10="$wire.loadMoreKanban()"
+                class="h-10 flex items-center justify-center"
             >
-                ↓ Drop here to update stage
+                <svg class="w-5 h-5 animate-spin text-slate-400" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
             </div>
-        </div>
-        @endforeach
+        @endif
     </div>
-    @endif
+@endif
 
     {{-- ══════════════════════════════════════
-         TABLE LIST VIEW
+         TABLE LIST VIEW WITH BATCH OPERATIONS
     ══════════════════════════════════════ --}}
     @if($view === 'table')
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
-        <div class="overflow-x-auto">
-            <table class="w-full border-collapse text-left text-sm">
-                <thead>
-                    <tr class="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800">
-                        <th class="px-5 py-3.5 font-semibold text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider">Name</th>
-                        <th class="px-5 py-3.5 font-semibold text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider">Internal Entity</th>
-                        <th class="px-5 py-3.5 font-semibold text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider">Amount</th>
-                        <th class="px-5 py-3.5 font-semibold text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider">Stage</th>
-                        <th class="px-5 py-3.5 font-semibold text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Move Stage</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                    @forelse($deals as $deal)
-                    @php
-                        $cfg = $stageConfig[$deal['stage']] ?? [
-                            'accent' => '#64748b', 'accentLight' => 'rgba(100,116,139,0.10)',
-                            'accentText' => '#475569', 'icon' => '🔹',
-                            'label' => ucwords($deal['stage']),
-                        ];
-                    @endphp
-                    <tr class="group hover:bg-slate-50 dark:hover:bg-slate-800/40 transition duration-100">
-                        <td class="px-5 py-3.5 font-medium text-slate-900 dark:text-white">
-                            {{-- Left accent bar via box-shadow on td --}}
-                            <div class="flex items-center gap-3">
-                                <div class="w-1 h-5 rounded-full shrink-0" style="background-color: {{ $cfg['accent'] }};"></div>
-                                <a
-                                    href="{{ route('deals.show', $deal['id']) }}"
-                                    class="hover:text-indigo-600 dark:hover:text-indigo-400 transition truncate max-w-[200px] block"
-                                >{{ $deal['name'] }}</a>
-                            </div>
-                        </td>
-                        <td class="px-5 py-3.5 text-slate-500 dark:text-slate-400 text-sm">
-                            {{ $deal['internal_company'] ?? '—' }}
-                        </td>
-                        <td class="px-5 py-3.5 font-semibold text-slate-900 dark:text-white tabular-nums text-sm">
-                            £{{ number_format($deal['amount'], 0) }}
-                        </td>
-                        <td class="px-5 py-3.5">
-                            {{-- Badge with inline styles so colors always render --}}
-                            <span
-                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
-                                style="background-color: {{ $cfg['accentLight'] }}; color: {{ $cfg['accentText'] }};"
-                            >
-                                <span>{{ $cfg['icon'] }}</span>
-                                {{ $cfg['label'] }}
-                            </span>
-                        </td>
-                        <td class="px-5 py-3.5 text-right">
-                            <select
-                                class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 text-xs py-1.5 pl-2.5 pr-7 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition cursor-pointer"
-                                wire:change="updateStage({{ $deal['id'] }}, $event.target.value)"
-                            >
-                                @foreach($stages as $s)
-                                    @php $sCfg = $stageConfig[$s] ?? ['label' => ucwords($s), 'icon' => '']; @endphp
-                                    <option value="{{ $s }}" {{ $deal['stage'] === $s ? 'selected' : '' }}>
-                                        {{ $sCfg['icon'] }} {{ $sCfg['label'] }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </td>
-                    </tr>
-                    @empty
-                    <tr>
-                        <td colspan="5" class="px-5 py-16 text-center">
-                            <div class="flex flex-col items-center gap-2 text-slate-400 dark:text-slate-500">
-                                <svg class="w-8 h-8 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                                </svg>
-                                <span class="text-sm italic">No deals match the current filters.</span>
-                            </div>
-                        </td>
-                    </tr>
-                    @endforelse
-                </tbody>
-            </table>
+        <div wire:key="table-view-{{ $currentPage }}-{{ $totalDeals }}">
+            @include('components.deals.partials.⚡table-view', ['stageConfig' => $stageConfig])
         </div>
-    </div>
     @endif
+
+    {{-- BATCH ACTIONS FLOATING TOOLBAR --}}
+    @if($this->getSelectedCount() > 0)
+        <div class="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 shadow-xl z-50">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+                <div class="text-sm font-medium text-slate-900 dark:text-white">
+                    {{ $this->getSelectedCount() }} deal(s) selected
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    {{-- Dropdown Container with Alpine Management --}}
+                    <div class="relative" x-data="{ open: false }" @click.away="open = false">
+                        <button
+                            type="button"
+                            @click="open = !open"
+                            class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors"
+                        >
+                            Batch Operations
+                            <svg class="w-4 h-4 transform transition-transform" :class="{'rotate-180': open}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </button>
+
+                        <div 
+                            x-show="open" 
+                            x-cloak
+                            class="absolute right-0 bottom-full mb-2 w-48 rounded-lg shadow-lg bg-white dark:bg-slate-800 ring-1 ring-black ring-opacity-5 divide-y divide-slate-100 dark:divide-slate-700 z-50"
+                        >
+                            <div class="py-1">
+                                <button wire:click="openBatchModal('owner')" @click="open = false" class="block w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">👤 Update Owner</button>
+                                <button wire:click="openBatchModal('stage')" @click="open = false" class="block w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">📊 Update Stage</button>
+                            </div>
+                            <div class="py-1">
+                                <button wire:click="openBatchModal('delete')" @click="open = false" class="block w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">🗑️ Delete Records</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button wire:click="resetBatchState" class="px-4 py-2.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white text-sm font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors">Clear Selection</button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- MODALS --}}
+    @if($showBatchModal)
+        <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" wire:click.self="closeBatchModal">
+            <div class="bg-white dark:bg-slate-900 rounded-lg shadow-xl max-w-md w-full p-6">
+                <h3 class="text-lg font-semibold mb-4 text-slate-900 dark:text-white">
+                    @if($batchOperation === 'owner') Update Deal Owner @endif
+                    @if($batchOperation === 'stage') Update Deal Stage @endif
+                    @if($batchOperation === 'delete') Delete Deals @endif
+                </h3>
+
+                @if($batchOperation === 'owner')
+                    <select wire:model="batchOwnerValue" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-white">
+                        <option value="">Choose an owner...</option>
+                        @foreach($allUsers as $u) <option value="{{ $u['id'] }}">{{ $u['name'] }}</option> @endforeach
+                    </select>
+                @elseif($batchOperation === 'stage')
+                    <select wire:model="batchStageValue" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-white">
+                        <option value="">Choose a stage...</option>
+                        @foreach($stages as $s) <option value="{{ $s }}">{{ $stageConfig[$s]['label'] ?? ucwords($s) }}</option> @endforeach
+                    </select>
+                @elseif($batchOperation === 'delete')
+                    <p class="text-sm text-red-600 dark:text-red-400">⚠️ This action cannot be undone.</p>
+                @endif
+
+                <div class="mt-6 flex justify-end gap-3">
+                    <button wire:click="closeBatchModal" class="px-4 py-2 rounded-lg border border-slate-300 text-sm">Cancel</button>
+                    <button wire:click="@if($batchOperation === 'owner') confirmBatchUpdateOwner @elseif($batchOperation === 'stage') confirmBatchUpdateStage @else confirmBatchDelete @endif" class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm">Continue</button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @if($showConfirmModal)
+        <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" wire:click.self="closeBatchModal">
+            <div class="bg-white dark:bg-slate-900 rounded-lg shadow-xl max-w-md w-full p-6">
+                <h3 class="text-lg font-semibold mb-2">Confirm Action</h3>
+                <p class="text-sm text-slate-600 dark:text-slate-400 mb-6">{{ $confirmMessage }}</p>
+                <div class="flex justify-end gap-3">
+                    @if($selectAll && !$batchOperation)
+                        <button wire:click="cancelSelectAll" class="px-4 py-2 text-sm border rounded-lg">Page Only</button>
+                        <button wire:click="confirmSelectAll" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg">Select System-wide</button>
+                    @else
+                        <button wire:click="closeBatchModal" class="px-4 py-2 text-sm border rounded-lg">Cancel</button>
+                        <button wire:click="confirmBatchAction" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg">Confirm</button>
+                    @endif
+                </div>
+            </div>
+        </div>
+    @endif
+</div>
 
 </div>

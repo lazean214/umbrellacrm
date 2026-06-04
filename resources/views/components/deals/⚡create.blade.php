@@ -20,7 +20,7 @@ new class extends Component
     public $stage = DealStage::DOC_SENT->value;
     public $agency_deal_value;
     public $margin_agreed;
-    public $recruitment_agency;
+    public $recruitment_agency = 'Inbound';
     public $consultant_name;
     public $user_id = null;
 
@@ -420,7 +420,7 @@ new class extends Component
                         <div class="deal-field-grid-2">
                             <div class="deal-field">
                                 <label class="deal-label">Timesheet Value</label>
-                                <input wire:model="amount" type="text" placeholder="0.00" class="deal-input">
+                                <input wire:model="amount" type="number" placeholder="0.00" class="deal-input">
                             </div>
                             <div class="deal-field">
                                 <label class="deal-label">Deal Stage</label>
@@ -463,7 +463,7 @@ new class extends Component
                         </div>
                         <div class="deal-field" style="margin-top:12px">
                             <label class="deal-label">Phone</label>
-                            <input wire:model="phone" type="text" placeholder="+44 7700 000000" class="deal-input">
+                            <input wire:model="phone" type="tel" placeholder="+44 7700 000000" class="deal-input">
                         </div>
                     </div>
 
@@ -510,41 +510,53 @@ new class extends Component
                                 <div class="deal-field-grid-2" style="margin-top:12px">
                                     <div class="deal-field">
                                         <label class="deal-label">Agency Deal Value</label>
-                                        <input wire:model="agency_deal_value" type="text" placeholder="0.00" class="deal-input">
+                                        <input wire:model="agency_deal_value" type="number" placeholder="0.00" class="deal-input">
                                     </div>
                                     <div class="deal-field">
                                         <label class="deal-label">Margin Agreed</label>
-                                        <input wire:model="margin_agreed" type="text" placeholder="0%" class="deal-input">
+                                        <input wire:model="margin_agreed" type="number" placeholder="0%" class="deal-input">
                                     </div>
                                 </div>
                             </div>
 
                         @elseif($recruitment_agency === 'Inbound')
-                            <div class="deal-field">
-                                <label class="deal-label">Consultant Name <span>*</span></label>
-                                <div class="deal-autocomplete-wrap">
-                                    <input
-                                        wire:model.live="consultant_name"
-                                        type="text"
-                                        placeholder="Search consultant…"
-                                        class="deal-input"
-                                        autocomplete="off"
-                                    >
-                                    @if($showConsultantDropdown)
-                                        <div class="deal-autocomplete-dropdown">
-                                            @foreach($consultantSuggestions as $suggestion)
-                                                <div class="deal-autocomplete-item" wire:click="selectConsultant('{{ addslashes($suggestion) }}')">
-                                                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                                                        <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" stroke-width="1.3"/>
-                                                        <path d="M4.5 6.5l1.5 1.5 2.5-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-                                                    </svg>
-                                                    {{ $suggestion }}
-                                                </div>
-                                            @endforeach
-                                        </div>
-                                    @endif
+                            <div class="deal-referral-panel">
+                                <div class="deal-field">
+                                    <label class="deal-label">Consultant Name <span>*</span></label>
+                                    <div class="deal-autocomplete-wrap">
+                                        <input
+                                            wire:model.live="consultant_name"
+                                            type="text"
+                                            placeholder="Search or enter consultant…"
+                                            class="deal-input"
+                                            autocomplete="off"
+                                        >
+                                        @if($showConsultantDropdown)
+                                            <div class="deal-autocomplete-dropdown">
+                                                @foreach($consultantSuggestions as $suggestion)
+                                                    <div class="deal-autocomplete-item" wire:click="selectConsultant('{{ addslashes($suggestion) }}')">
+                                                        <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                                                            <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" stroke-width="1.3"/>
+                                                            <path d="M4.5 6.5l1.5 1.5 2.5-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                                                        </svg>
+                                                        {{ $suggestion }}
+                                                    </div>
+                                                @endforeach
+                                            </div>
+                                        @endif
+                                    </div>
+                                    @error('consultant_name') <span class="deal-error">{{ $message }}</span> @enderror
                                 </div>
-                                @error('consultant_name') <span class="deal-error">{{ $message }}</span> @enderror
+                                <div class="deal-field-grid-2" style="margin-top:12px">
+                                    <div class="deal-field">
+                                        <label class="deal-label">Agency Deal Value</label>
+                                        <input wire:model="agency_deal_value" type="number" placeholder="0.00" class="deal-input">
+                                    </div>
+                                    <div class="deal-field">
+                                        <label class="deal-label">Margin Agreed</label>
+                                        <input wire:model="margin_agreed" type="number" placeholder="0%" class="deal-input">
+                                    </div>
+                                </div>
                             </div>
 
                         @else
@@ -553,6 +565,7 @@ new class extends Component
                                 <input wire:model="consultant_name" type="text" placeholder="Consultant's name" class="deal-input">
                                 @error('consultant_name') <span class="deal-error">{{ $message }}</span> @enderror
                             </div>
+                            
                         @endif
                     </div>
 

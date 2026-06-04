@@ -162,7 +162,11 @@
             <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="main">
               <tr>
                 <td class="wrapper">
-                    {!! nl2br($bodyContent) !!}
+                  @if ($isHtml ?? true)
+                    {!! $bodyContent !!}
+                  @else
+                    {!! nl2br(e($bodyContent)) !!}
+                  @endif
                 </td>
               </tr>
               </table>
@@ -177,12 +181,12 @@
                   </td>
                 </tr>
                 <tr>
-                  <td class="content-block compliance-links" style="padding-top: 12px;">
-                    You received this operational message regarding your account status. 
-                    <br>
-                    <a href="{{ config('app.url') }}/privacy-policy" target="_blank">Privacy Policy</a> 
-                    | 
-                    <a href="{{ config('app.url') }}/email-preferences?email={{ urlencode($toEmail ?? '') }}" target="_blank">Manage Email Preferences</a>
+                  <td class="content-block compliance-links" style="padding-top: 12px; font-size: 11px; color: #9a9ea6;">
+                    This operational email was sent to <strong>{{ $toEmail ?? 'your registered address' }}</strong> because you have an active account or ongoing contract with Churchill Knight Umbrella (Lawful Basis: Performance of a Contract).
+                    <br><br>
+                    To review how we safeguard your data, read our <a href="{{ config('app.url') }}/privacy-policy" target="_blank">Privacy Policy</a>. To exercise your right to access, rectification, or erasure, contact our data team at <a href="mailto:privacy@churchill-knight.co.uk">privacy@churchill-knight.co.uk</a>.
+                    <br><br>
+                    <a href="{{ config('app.url') }}/email-preferences?email={{ urlencode($toEmail ?? '') }}" target="_blank">Manage Email Preferences</a> | <a href="{{ config('app.url') }}/unsubscribe?email={{ urlencode($toEmail ?? '') }}" target="_blank">Unsubscribe from all non-essential communications</a>
                   </td>
                 </tr>
               </table>

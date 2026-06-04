@@ -3,3 +3,4 @@
         @livewire('deals.view', ['dealId' => $deal->id])
     </div>
 </x-layouts::app>
+

@@ -4,10 +4,10 @@ namespace App\Mail;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
-use Illuminate\Queue\SerializesModels;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
-use Illuminate\Mail\Mailables\Attachment;
+use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Storage;
 
 class DealEmailMailable extends Mailable
@@ -17,6 +17,7 @@ class DealEmailMailable extends Mailable
     public function __construct(
         public string $subjectLine,
         public string $bodyContent,
+        public bool $isHtml = true,
         public array $emailAttachments = [],
     ) {}
 
@@ -32,8 +33,8 @@ class DealEmailMailable extends Mailable
         return new Content(
             view: 'email.simple-template',
             with: [
-                'bodyContent' =>
-                    $this->bodyContent,
+                'bodyContent' => $this->bodyContent,
+                'isHtml' => $this->isHtml,
             ],
         );
     }
@@ -43,24 +44,23 @@ class DealEmailMailable extends Mailable
         return collect(
             $this->emailAttachments
         )
-        ->filter(
-            fn ($file) =>
-                Storage::disk('local')
+            ->filter(
+                fn ($file) => Storage::disk('local')
                     ->exists(
                         $file['path']
                     )
-        )
-        ->map(
-            function ($file) {
+            )
+            ->map(
+                function ($file) {
 
-                return Attachment::fromStorageDisk(
-                    'local',
-                    $file['path']
-                )->as(
-                    $file['name']
-                );
-            }
-        )
-        ->toArray();
+                    return Attachment::fromStorageDisk(
+                        'local',
+                        $file['path']
+                    )->as(
+                        $file['name']
+                    );
+                }
+            )
+            ->toArray();
     }
 }

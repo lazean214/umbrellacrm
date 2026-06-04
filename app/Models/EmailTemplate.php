@@ -3,13 +3,20 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
-class EmailTemplate extends Model
+class EmailTemplate extends Model implements HasMedia
 {
+    use InteractsWithMedia;
+
     protected $fillable = [
         'name',
         'subject',
         'body',
+        'is_html',
+        'editor_mode',
+        'sections',
         'description',
         'is_active',
         'created_by',
@@ -19,7 +26,14 @@ class EmailTemplate extends Model
     {
         return [
             'is_active' => 'boolean',
+            'is_html' => 'boolean',
+            'sections' => 'array',
         ];
+    }
+
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('builder_images');
     }
 
     public function creator()
@@ -43,6 +57,4 @@ class EmailTemplate extends Model
             EmailTemplateAttachment::class
         );
     }
-
-    
 }

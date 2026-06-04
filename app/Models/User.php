@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\DealStage;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -58,5 +59,89 @@ class User extends Authenticatable implements PasskeyUser
         return $this->hasMany(
             Deal::class
         );
+    }
+
+    public function teams()
+    {
+        return $this->belongsToMany(
+            Team::class,
+            'team_user'
+        );
+    }
+
+    /**
+     * Check if user belongs to a specific team by name
+     */
+    public function belongsToTeam($teamName): bool
+    {
+        return $this->teams()
+            ->where('name', $teamName)
+            ->exists();
+    }
+
+    /**
+     * Check if user is in Sales Team
+     */
+    public function isSalesTeam(): bool
+    {
+        return $this->belongsToTeam('Sales Team');
+    }
+
+    /**
+     * Check if user is in Compliance Team
+     */
+    public function isComplianceTeam(): bool
+    {
+        return $this->belongsToTeam('Compliance Team');
+    }
+
+    /**
+     * Get allowed deal stages for this user
+     *
+     * Compliance Team: Can access all stages
+     * Sales Team: Can only move deals to Doc Sent, Doc Signed, Compliant
+     * No Team: All stages available (default)
+     */
+    public function getAllowedDealStages(): array
+    {
+        if ($this->isComplianceTeam()) {
+            // Compliance can move to all stages
+            return array_map(
+                fn ($case) => $case->value,
+                DealStage::cases()
+            );
+        }
+
+        if ($this->isSalesTeam()) {
+            // Sales can only move to these stages
+            return [
+                DealStage::DOC_SENT->value,
+                DealStage::DOC_SIGNED->value,
+                DealStage::COMPLIANT->value,
+            ];
+        }
+
+        // Default: no restrictions if not in a team
+        return array_map(
+            fn ($case) => $case->value,
+            DealStage::cases()
+        );
+    }
+
+    /**
+     * Check if user can move a deal to a specific stage
+     */
+    public function canMoveToStage($stage): bool
+    {
+        return in_array($stage, $this->getAllowedDealStages());
+    }
+
+    /**
+     * Get allowed stage values for authorized movement
+     * Used in frontend to show/disable stage buttons
+     */
+    public function getEditableStages(): array
+    {
+        return $this->getAllowedDealStages();
     }
 }

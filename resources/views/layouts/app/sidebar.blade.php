@@ -8,6 +8,7 @@
             <flux:sidebar.header>
                 <x-app-logo :sidebar="true" href="{{ route('dashboard') }}" wire:navigate />
                 <flux:sidebar.collapse class="lg:hidden" />
+                <livewire:notifications-dropdown />
             </flux:sidebar.header>
 
             <flux:sidebar.nav>
@@ -27,28 +28,33 @@
                     <flux:sidebar.item icon="pencil-square" :href="route('designer')" :current="request()->routeIs('designer')" wire:navigate>
                         {{ __('Email Designer') }}
                     </flux:sidebar.item>
-                </flux:sidebar.group>
+                    <flux:sidebar.item icon="rectangle-group" :href="route('teams')" :current="request()->routeIs('teams')" wire:navigate>
+                        {{ __('Teams') }}
+                    </flux:sidebar.item>
+                    <flux:sidebar.item icon="user-circle" :href="route('users')" :current="request()->routeIs('users')" wire:navigate>
+                        {{ __('Users') }}
+                    </flux:sidebar.item>
+            </flux:sidebar.group>
             </flux:sidebar.nav>
 
             <flux:spacer />
-
-          
-
             <x-desktop-user-menu class="hidden lg:block" :name="auth()->user()->name" />
         </flux:sidebar>
 
         <!-- Mobile User Menu -->
         <flux:header class="lg:hidden">
+            
             <flux:sidebar.toggle class="lg:hidden" icon="bars-2" inset="left" />
-
+            
             <flux:spacer />
-
+            <livewire:notifications-dropdown />
             <flux:dropdown position="top" align="end">
+                
                 <flux:profile
                     :initials="auth()->user()->initials()"
                     icon-trailing="chevron-down"
                 />
-
+                 
                 <flux:menu>
                     <flux:menu.radio.group>
                         <div class="p-0 text-sm font-normal">
@@ -65,7 +71,7 @@
                             </div>
                         </div>
                     </flux:menu.radio.group>
-
+                    
                     <flux:menu.separator />
 
                     <flux:menu.radio.group>

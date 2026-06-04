@@ -2,15 +2,17 @@
 
 namespace App\Models;
 
+use App\Enums\DealStage;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
+use App\Traits\LogsDealHistory;
 
 class Deal extends Model implements HasMedia
 {
-    use InteractsWithMedia;
+    use HasFactory, InteractsWithMedia, LogsDealHistory;
 
     protected $fillable = [
         'name',
@@ -35,7 +37,16 @@ class Deal extends Model implements HasMedia
         'starter_form',
         'tax_code',
         'contract_recieved_date',
+        'stage_updated_at',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'stage' => DealStage::class,
+            'stage_updated_at' => 'datetime',
+        ];
+    }
 
     /*
     |--------------------------------------------------------------------------
@@ -89,6 +100,28 @@ class Deal extends Model implements HasMedia
 
     /*
     |--------------------------------------------------------------------------
+    | CRM Visibility Scope
+    |--------------------------------------------------------------------------
+    */
+
+    public function scopeVisibleTo($query, $user)
+    {
+        if (! $user) {
+            return $query;
+        }
+
+        if ($user->isSalesTeam()) {
+            return $query->where(
+                'user_id',
+                $user->id
+            );
+        }
+
+        return $query;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | Media Collections
     |--------------------------------------------------------------------------
     */
@@ -99,5 +132,10 @@ class Deal extends Model implements HasMedia
         $this->addMediaCollection('compliance_documents');
 
         $this->addMediaCollection('contract_documents');
+    }
+
+    public function signableEnvelopes()
+    {
+        return $this->hasMany(SignableEnvelope::class);
     }
 }
