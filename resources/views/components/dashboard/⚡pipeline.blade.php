@@ -54,7 +54,8 @@ new class extends Component
     #[Computed]
     public function totalPipelineValue(): string
     {
-        return number_format($this->getBaseQuery()->sum('amount'), 2);
+        $total = $this->getBaseQuery()->sum('amount') ?? 0;
+        return number_format((float) $total, 2);
     }
 
     #[Computed]
@@ -67,7 +68,7 @@ new class extends Component
     public function averageMargin(): string
     {
         $avg = $this->getBaseQuery()->avg('margin_agreed') ?? 0;
-        return number_format($avg, 2);
+        return number_format((float) $avg, 2);
     }
 
     #[Computed]
@@ -128,17 +129,19 @@ new class extends Component
                         'avg_margin' => [],
                     ];
                 }
-                $summary[$company->id]['total_value'] += $deal->amount;
+                $summary[$company->id]['total_value'] += (float) ($deal->amount ?? 0);
                 $summary[$company->id]['deal_count']++;
-                $summary[$company->id]['avg_margin'][] = $deal->margin_agreed;
+                if ($deal->margin_agreed !== null) {
+                    $summary[$company->id]['avg_margin'][] = (float) $deal->margin_agreed;
+                }
             }
         }
 
         return collect($summary)->map(fn ($item) => [
             'name' => $item['name'],
-            'total_value' => $item['total_value'],
-            'deal_count' => $item['deal_count'],
-            'avg_margin' => $item['avg_margin'] ? number_format(array_sum($item['avg_margin']) / count($item['avg_margin']), 2) : 0,
+            'total_value' => (float) $item['total_value'],
+            'deal_count' => (int) $item['deal_count'],
+            'avg_margin' => !empty($item['avg_margin']) ? number_format(array_sum($item['avg_margin']) / count($item['avg_margin']), 2) : '0.00',
         ])->sortByDesc('total_value')->values();
     }
 
@@ -152,13 +155,13 @@ new class extends Component
                 if (!isset($summary[$contact->id])) {
                     $summary[$contact->id] = [
                         'name' => $contact->name,
-                        'email' => $contact->email,
-                        'company' => $contact->company?->name,
+                        'email' => $contact->email ?? '—',
+                        'company' => $contact->company?->name ?? '—',
                         'total_value' => 0,
                         'deal_count' => 0,
                     ];
                 }
-                $summary[$contact->id]['total_value'] += $deal->amount;
+                $summary[$contact->id]['total_value'] += (float) ($deal->amount ?? 0);
                 $summary[$contact->id]['deal_count']++;
             }
         }
@@ -172,10 +175,10 @@ new class extends Component
             ->groupBy('user_id')
             ->map(fn ($deals, $userId) => [
                 'name' => $deals->first()->user?->name ?? 'Unassigned',
-                'total_value' => $deals->sum('amount'),
+                'total_value' => (float) $deals->sum('amount'),
                 'deal_count' => $deals->count(),
-                'avg_margin' => number_format($deals->avg('margin_agreed') ?? 0, 2),
-                'avg_deal_size' => number_format($deals->avg('amount') ?? 0, 2),
+                'avg_margin' => number_format((float) ($deals->avg('margin_agreed') ?? 0), 2),
+                'avg_deal_size' => number_format((float) ($deals->avg('amount') ?? 0), 2),
             ])
             ->sortByDesc('total_value')
             ->values();
@@ -185,14 +188,14 @@ new class extends Component
     {
         return $query->get()
             ->map(fn ($deal) => [
-                'name' => $deal->name,
-                'owner' => $deal->user?->name,
-                'company' => $deal->companies->first()?->name,
-                'contact' => $deal->contacts->first()?->name,
-                'stage' => ucwords($deal->stage->value),
-                'amount' => $deal->amount,
-                'margin' => $deal->margin_agreed,
-                'created_date' => $deal->created_at?->format('Y-m-d'),
+                'name' => $deal->name ?? '—',
+                'owner' => $deal->user?->name ?? '—',
+                'company' => $deal->companies->first()?->name ?? '—',
+                'contact' => $deal->contacts->first()?->name ?? '—',
+                'stage' => ucwords($deal->stage->value ?? 'unknown'),
+                'amount' => (float) ($deal->amount ?? 0),
+                'margin' => $deal->margin_agreed !== null ? (float) $deal->margin_agreed : null,
+                'created_date' => $deal->created_at?->format('Y-m-d') ?? '—',
             ]);
     }
 
@@ -282,7 +285,7 @@ new class extends Component
                     foreach ($data as $row) {
                         fputcsv($file, [
                             $row['name'],
-                            number_format($row['total_value'], 2),
+                            number_format((float) $row['total_value'], 2),
                             $row['deal_count'],
                             $row['avg_margin']
                         ]);
@@ -295,7 +298,7 @@ new class extends Component
                             $row['name'],
                             $row['email'],
                             $row['company'],
-                            number_format($row['total_value'], 2),
+                            number_format((float) $row['total_value'], 2),
                             $row['deal_count']
                         ]);
                     }
@@ -305,7 +308,7 @@ new class extends Component
                     foreach ($data as $row) {
                         fputcsv($file, [
                             $row['name'],
-                            number_format($row['total_value'], 2),
+                            number_format((float) $row['total_value'], 2),
                             $row['deal_count'],
                             $row['avg_margin'],
                             $row['avg_deal_size']
@@ -321,8 +324,8 @@ new class extends Component
                             $row['company'],
                             $row['contact'],
                             $row['stage'],
-                            number_format($row['amount'], 2),
-                            $row['margin'],
+                            number_format((float) $row['amount'], 2),
+                            $row['margin'] !== null ? (string) $row['margin'] : '—',
                             $row['created_date']
                         ]);
                     }
@@ -492,7 +495,7 @@ new class extends Component
                                     {{ ucwords($deal->stage->value) }}
                                 </span>
                             </td>
-                            <td class="px-5 py-3 text-right font-medium tabular-nums">£{{ number_format($deal->amount, 2) }}</td>
+                            <td class="px-5 py-3 text-right font-medium tabular-nums">£{{ number_format((float) $deal->amount, 2) }}</td>
                             <td class="px-5 py-3 text-neutral-500">{{ $deal->created_at?->format('d M Y') ?? '—' }}</td>
                         </tr>
                     @empty
@@ -539,7 +542,7 @@ new class extends Component
                                     {{ ucfirst($deal->history_type) }}
                                 </span>
                             </td>
-                            <td class="px-5 py-3 text-right font-medium">£{{ number_format($deal->amount, 2) }}</td>
+                            <td class="px-5 py-3 text-right font-medium">£{{ number_format((float) $deal->amount, 2) }}</td>
                             <td class="px-5 py-3 text-neutral-500">{{ $deal->updated_at?->format('d M Y') ?? '—' }}</td>
                         </tr>
                     @empty
@@ -581,7 +584,7 @@ new class extends Component
                                 <span class="text-emerald-600">{{ $week->created_this_week }}</span>
                             </td>
                             <td class="px-5 py-3 text-right">{{ $week->paid_deals }}</td>
-                            <td class="px-5 py-3 text-right font-medium">£{{ number_format($week->paid_amount, 2) }}</td>
+                            <td class="px-5 py-3 text-right font-medium">£{{ number_format((float) $week->paid_amount, 2) }}</td>
                         </tr>
                     @empty
                         <tr>
@@ -618,14 +621,18 @@ new class extends Component
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-neutral-100">
-                        @foreach($this->tsvReport['by_company'] as $company)
+                        @forelse($this->tsvReport['by_company'] as $company)
                             <tr>
                                 <td class="px-5 py-3 font-medium">{{ $company['name'] }}</td>
                                 <td class="px-5 py-3 text-right">£{{ number_format($company['total_value'], 2) }}</td>
                                 <td class="px-5 py-3 text-right">{{ $company['deal_count'] }}</td>
                                 <td class="px-5 py-3 text-right">{{ $company['avg_margin'] }}%</td>
                             </tr>
-                        @endforeach
+                        @empty
+                            <tr>
+                                <td colspan="4" class="px-5 py-10 text-center text-neutral-400">No data available</td>
+                            </tr>
+                        @endforelse
                     </tbody>
                 </table>
             </div>
@@ -651,15 +658,19 @@ new class extends Component
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-neutral-100">
-                        @foreach($this->tsvReport['by_contact'] as $contact)
+                        @forelse($this->tsvReport['by_contact'] as $contact)
                             <tr>
                                 <td class="px-5 py-3 font-medium">{{ $contact['name'] }}</td>
-                                <td class="px-5 py-3 text-neutral-600">{{ $contact['email'] ?? '—' }}</td>
-                                <td class="px-5 py-3 text-neutral-600">{{ $contact['company'] ?? '—' }}</td>
+                                <td class="px-5 py-3 text-neutral-600">{{ $contact['email'] }}</td>
+                                <td class="px-5 py-3 text-neutral-600">{{ $contact['company'] }}</td>
                                 <td class="px-5 py-3 text-right">£{{ number_format($contact['total_value'], 2) }}</td>
                                 <td class="px-5 py-3 text-right">{{ $contact['deal_count'] }}</td>
                             </tr>
-                        @endforeach
+                        @empty
+                            <tr>
+                                <td colspan="5" class="px-5 py-10 text-center text-neutral-400">No data available</td>
+                            </tr>
+                        @endforelse
                     </tbody>
                 </table>
             </div>
@@ -685,15 +696,19 @@ new class extends Component
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-neutral-100">
-                        @foreach($this->tsvReport['by_user'] as $user)
+                        @forelse($this->tsvReport['by_user'] as $user)
                             <tr>
                                 <td class="px-5 py-3 font-medium">{{ $user['name'] }}</td>
-                                <td class="px-5 py-3 text-right">£{{ number_format($user['total_value'], 2) }}</td>
+                                <td class="px-5 py-3 text-right">£{{ $user['total_value'] }}</td>
                                 <td class="px-5 py-3 text-right">{{ $user['deal_count'] }}</td>
                                 <td class="px-5 py-3 text-right">{{ $user['avg_margin'] }}%</td>
-                                <td class="px-5 py-3 text-right">£{{ number_format($user['avg_deal_size'], 2) }}</td>
+                                <td class="px-5 py-3 text-right">£{{ $user['avg_deal_size'] }}</td>
                             </tr>
-                        @endforeach
+                        @empty
+                            <tr>
+                                <td colspan="5" class="px-5 py-10 text-center text-neutral-400">No data available</td>
+                            </tr>
+                        @endforelse
                     </tbody>
                 </table>
             </div>
@@ -722,18 +737,22 @@ new class extends Component
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-neutral-100">
-                        @foreach($this->tsvReport['by_deal'] as $deal)
+                        @forelse($this->tsvReport['by_deal'] as $deal)
                             <tr>
                                 <td class="px-5 py-3 font-medium">{{ $deal['name'] }}</td>
-                                <td class="px-5 py-3 text-neutral-600">{{ $deal['owner'] ?? '—' }}</td>
-                                <td class="px-5 py-3 text-neutral-600">{{ $deal['company'] ?? '—' }}</td>
-                                <td class="px-5 py-3 text-neutral-600">{{ $deal['contact'] ?? '—' }}</td>
+                                <td class="px-5 py-3 text-neutral-600">{{ $deal['owner'] }}</td>
+                                <td class="px-5 py-3 text-neutral-600">{{ $deal['company'] }}</td>
+                                <td class="px-5 py-3 text-neutral-600">{{ $deal['contact'] }}</td>
                                 <td class="px-5 py-3">{{ $deal['stage'] }}</td>
                                 <td class="px-5 py-3 text-right">£{{ number_format($deal['amount'], 2) }}</td>
-                                <td class="px-5 py-3 text-right">{{ $deal['margin'] ?? '—' }}</td>
-                                <td class="px-5 py-3 text-neutral-500">{{ $deal['created_date'] ?? '—' }}</td>
+                                <td class="px-5 py-3 text-right">{{ $deal['margin'] !== null ? $deal['margin'] . '%' : '—' }}</td>
+                                <td class="px-5 py-3 text-neutral-500">{{ $deal['created_date'] }}</td>
                             </tr>
-                        @endforeach
+                        @empty
+                            <tr>
+                                <td colspan="8" class="px-5 py-10 text-center text-neutral-400">No data available</td>
+                            </tr>
+                        @endforelse
                     </tbody>
                 </table>
             </div>
