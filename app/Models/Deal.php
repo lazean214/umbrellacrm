@@ -18,6 +18,8 @@ class Deal extends Model implements HasMedia
         'name',
         'amount',
         'stage',
+        'hours',
+        'rate',
         'recruitment_agency',
         'consultant_name',
         'agency_deal_value',

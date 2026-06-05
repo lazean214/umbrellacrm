@@ -17,6 +17,8 @@ return new class extends Migration
             $table->string('name');
             $table->decimal('amount', 15, 2)->nullable();
             $table->string('stage')->nullable();
+            $table->decimal('hours')->nullable();
+            $table->decimal('rate')->nullable();
             $table->string('recruitment_agency')->nullable();
             $table->string('consultant_name')->nullable();
             $table->decimal('agency_deal_value', 15, 2)->nullable();

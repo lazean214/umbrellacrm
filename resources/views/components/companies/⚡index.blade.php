@@ -122,6 +122,7 @@ new class extends Component
         </div>
 
         <div class="flex gap-2">
+           
             <livewire:companies.import />
             <livewire:companies.create />
         </div>

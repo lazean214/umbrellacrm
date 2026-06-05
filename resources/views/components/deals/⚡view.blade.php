@@ -42,6 +42,8 @@ new class extends Component
     public $recruitment_agency;
     public $consultant_name;
     public $user_id;
+    public $hours;
+    public $rate;
 
     // Compliance Details
     public $date_sent;
@@ -140,6 +142,8 @@ public function mount(int $dealId)
         $this->recruitment_agency = $this->deals->recruitment_agency;
         $this->consultant_name    = $this->deals->consultant_name;
         $this->user_id = $this->deals->user_id;
+        $this->hours = $this->deals->hours;
+        $this->rate = $this->deals->rate;
 
         // Pre-fill owner autocomplete
         $this->ownerSearch =
@@ -366,6 +370,8 @@ public function save(): void
         'name' => $this->name,
         'user_id' => $this->user_id,
         'amount' => $this->amount,
+        'hours' => $this->hours,
+        'rate' => $this->rate,
         'stage' => $this->stage,
         'agency_deal_value' => $this->agency_deal_value,
         'margin_agreed' => $this->margin_agreed,

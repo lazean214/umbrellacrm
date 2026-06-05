@@ -82,6 +82,12 @@ new class extends Component
         <label class="text-xs font-bold uppercase tracking-wider">TimeSheet Value</label>
         <input type="number" wire:model="amount" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
 
+        <label class="text-xs font-bold uppercase tracking-wider">Hours</label>
+        <input type="number" wire:model="hours" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
+
+        <label class="text-xs font-bold uppercase tracking-wider">Rate</label>
+        <input type="number" wire:model="rate" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4" />
+
         <label class="text-xs font-bold uppercase tracking-wider">Stage</label>
         <input type="text" wire:model="stage" readonly class="text-sm w-full capitalize border border-gray-200 bg-gray-50 rounded text-gray-500 px-3 py-2 mb-4 cursor-not-allowed dark:bg-slate-800 dark:text-slate-100" title="Use the stage selector above mb-4" />
 

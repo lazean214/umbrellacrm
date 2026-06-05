@@ -154,7 +154,7 @@ new class extends Component
             foreach ($deal->contacts as $contact) {
                 if (!isset($summary[$contact->id])) {
                     $summary[$contact->id] = [
-                        'name' => $contact->name,
+                        'name' => $contact->first_name . ' ' . $contact->last_name,
                         'email' => $contact->email ?? '—',
                         'company' => $contact->company?->name ?? '—',
                         'total_value' => 0,
@@ -231,7 +231,7 @@ new class extends Component
     #[Computed]
     public function contacts()
     {
-        return Contact::orderBy('name')->get(['id', 'name', 'email']);
+        return Contact::orderBy('first_name')->orderBy('last_name')->get(['id', 'first_name', 'last_name', 'email']);
     }
 
     #[Computed]
@@ -394,7 +394,7 @@ new class extends Component
             <select wire:model.live="filterContactId" class="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm">
                 <option value="">All Contacts</option>
                 @foreach ($this->contacts as $contact)
-                    <option value="{{ $contact->id }}">{{ $contact->name }}</option>
+                    <option value="{{ $contact->id }}">{{ $contact->first_name }} {{ $contact->last_name }}</option>
                 @endforeach
             </select>
         </div>
