@@ -98,12 +98,12 @@ new class extends Component
             <option value="Referral">Referral</option>
             </select>
 
-        <label class="text-xs font-bold uppercase tracking-wider">Consultant Name</label>
+        <label class="text-xs font-bold uppercase tracking-wider">Agency Name</label>
         <div class="relative" x-data @click.away="$wire.closeConsultantDropdown()">
             <input
                 wire:model.live="consultant_name"
                 type="text"
-                placeholder="Search or enter consultant…"
+                placeholder="Search or enter agency…"
                 class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-4"
                 autocomplete="off"
             >

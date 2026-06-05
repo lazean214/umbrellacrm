@@ -482,12 +482,12 @@ new class extends Component
                         @if($recruitment_agency === 'Referral')
                             <div class="deal-referral-panel">
                                 <div class="deal-field">
-                                    <label class="deal-label">Consultant Name <span>*</span></label>
+                                    <label class="deal-label">Agency Name <span>*</span></label>
                                     <div class="deal-autocomplete-wrap">
                                         <input
                                             wire:model.live="consultant_name"
                                             type="text"
-                                            placeholder="Search or enter consultant…"
+                                            placeholder="Search or enter agency"
                                             class="deal-input"
                                             autocomplete="off"
                                         >
@@ -522,12 +522,12 @@ new class extends Component
                         @elseif($recruitment_agency === 'Inbound')
                             <div class="deal-referral-panel">
                                 <div class="deal-field">
-                                    <label class="deal-label">Consultant Name <span>*</span></label>
+                                    <label class="deal-label">Agency Name <span>*</span></label>
                                     <div class="deal-autocomplete-wrap">
                                         <input
                                             wire:model.live="consultant_name"
                                             type="text"
-                                            placeholder="Search or enter consultant…"
+                                            placeholder="Search or enter agency"
                                             class="deal-input"
                                             autocomplete="off"
                                         >
