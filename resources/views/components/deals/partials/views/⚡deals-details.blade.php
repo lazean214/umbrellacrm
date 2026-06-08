@@ -9,7 +9,7 @@ new class extends Component
 ?>
 
 <section x-data="{ expanded: true }" class="bg-gray-100 text-black rounded-lg border dark:border-slate-700 p-4 dark:bg-slate-800 dark:text-slate-100 mt-4">
-    <h2 class="text-sm uppercase font-bold mb-4 flex justify-between">Deal Details  
+    <h2 class="text-sm uppercase font-bold flex justify-between">Deal Details  
         <button
                 @click="expanded = !expanded"
                 class="group inline-flex items-center justify-center rounded-lg p-2 transition hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -31,18 +31,19 @@ new class extends Component
             </svg>
         </button>
     </h2>
+    <div class="grid grid-cols-2 gap-4 mb-1 text-xs">
+        <div class="mb-2">
+            <label class="text-xs font-bold uppercase tracking-wider text-slate-500">Created: </label> {{ $created_at ? $created_at->format('d M Y') : 'N/A' }}
+        </div>
+        <div class="mb-2">
+            <label class="text-xs font-bold uppercase tracking-wider text-slate-500">Last Modified: </label> {{ $updated_at ? $updated_at->format('d M Y') : 'N/A' }}
+        </div>
+    </div>
+    <hr />
     <div x-show="expanded" x-collapse.duration.300ms>
 
     {{-- Deal details form fields --}}
-            <div class="grid grid-cols-2 gap-4 mb-1 text-xs">
-                <div class="mb-2">
-                    <label class="text-xs font-bold uppercase tracking-wider text-slate-500">Created: </label> {{ $created_at ? $created_at->format('d M Y') : 'N/A' }}
-                </div>
-                <div class="mb-2">
-                <label class="text-xs font-bold uppercase tracking-wider text-slate-500">Last Modified: </label> {{ $updated_at ? $updated_at->format('d M Y') : 'N/A' }}
-            </div>
-             </div>
-   
+
            <label class="text-xs font-bold uppercase tracking-wider">
             Deal Name
             <input type="text" wire:model="name" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2" />
@@ -120,7 +121,7 @@ new class extends Component
                 </div>
                 @error('consultant_name') <span class="deal-error">{{ $message }}</span> @enderror
             </div>
-            <div class="deal-field-grid-2" style="margin-top:12px">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4" style="margin-top:12px">
                 <div class="deal-field">
                     <label class="deal-label">Agency Deal Value</label>
                     <div class="mt-2">

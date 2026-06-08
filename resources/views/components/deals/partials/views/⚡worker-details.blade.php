@@ -9,7 +9,7 @@ new class extends Component
 ?>
 
 <section x-data="{ expanded: true }" class="bg-gray-100 text-black rounded-lg border dark:border-slate-700 p-4 dark:bg-slate-800 dark:text-slate-100 mt-4">
-            <h2 class="text-sm uppercase font-bold mb-4 flex justify-between">Worker Details 
+            <h2 class="text-sm uppercase font-bold flex justify-between">Worker Details 
                 <button
                 @click="expanded = !expanded"
                 class="group inline-flex items-center justify-center rounded-lg p-2 transition hover:bg-slate-100 dark:hover:bg-slate-800"

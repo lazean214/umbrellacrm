@@ -10,7 +10,7 @@ new class extends Component
 
 
 <section class="bg-gray-100 text-black rounded-lg border dark:border-slate-700 p-4 dark:bg-slate-800 dark:text-slate-100 mb-4 mt-4" x-data="{ expanded: true }">
-    <div class="flex items-center justify-between mb-4">
+    <div class="flex items-center justify-between ">
         <h2 class="text-sm uppercase font-bold mb-4">Compliance</h2>
         <button
                 @click="expanded = !expanded"
