@@ -84,6 +84,7 @@ new class extends Component
     public $tax_code;
     public $contract_recieved_date;
     public $created_at;
+    public $updated_at;
 
     /*
     |--------------------------------------------------------------------------
@@ -191,6 +192,7 @@ public function mount(int $dealId)
         $this->account_number = $contact->account_number ?? '';
         $this->sort_code      = $contact->sort_code      ?? '';
         $this->created_at     = $this->deals->created_at ?? null;
+        $this->updated_at     = $this->deals->updated_at ?? null;
     }
 
     public function canEdit(): bool

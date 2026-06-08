@@ -32,10 +32,25 @@ new class extends Component
         </button>
     </h2>
     <div x-show="expanded" x-collapse.duration.300ms>
+
+    {{-- Deal details form fields --}}
+            <div class="grid grid-cols-2 gap-4 mb-1 text-xs">
+                <div class="mb-2">
+                    <label class="text-xs font-bold uppercase tracking-wider text-slate-500">Created: </label> {{ $created_at ? $created_at->format('d M Y') : 'N/A' }}
+                </div>
+                <div class="mb-2">
+                <label class="text-xs font-bold uppercase tracking-wider text-slate-500">Last Modified: </label> {{ $updated_at ? $updated_at->format('d M Y') : 'N/A' }}
+            </div>
+             </div>
+   
            <label class="text-xs font-bold uppercase tracking-wider">
             Deal Name
             <input type="text" wire:model="name" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2" />
             </label>
+             <label class="text-xs font-bold uppercase tracking-wider">
+           
+             
+
            <label class="text-xs font-bold uppercase tracking-wider">
             Deal Owner</label>
                @php
@@ -56,9 +71,7 @@ new class extends Component
                       @endforeach
                  </select>
             
-           <label class="text-xs font-bold uppercase tracking-wider">
-            Deal Created At</label>
-                <input type="date" wire:model="created_at" class="block w-full pl-4 pr-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition mb-2" />
+          
             
            <label class="text-xs font-bold uppercase tracking-wider">
             Amount (TSV)</label>
