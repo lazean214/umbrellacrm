@@ -144,4 +144,6 @@ class User extends Authenticatable implements PasskeyUser
     {
         return $this->getAllowedDealStages();
     }
+
+
 }

@@ -34,8 +34,19 @@
                     <flux:sidebar.item icon="user-circle" :href="route('users')" :current="request()->routeIs('users')" wire:navigate>
                         {{ __('Users') }}
                     </flux:sidebar.item>
+@can('manage-gdpr')
+                    <flux:sidebar.item icon="shield-check" :href="route('admin.gdpr.dashboard')" :current="request()->routeIs('admin.gdpr.dashboard')" wire:navigate>
+                        {{ __('GDPR Compliance') }}
+                    </flux:sidebar.item>
+                    @endcan
+                    <flux:sidebar.item icon="user-circle" :href="route('gdpr.export.form')" :current="request()->routeIs('gdpr.export.form')" wire:navigate>
+                        {{ __('Request My Data') }}
+                    </flux:sidebar.item>
+                    <flux:spacer />
             </flux:sidebar.group>
             </flux:sidebar.nav>
+
+
 
             <flux:spacer />
             <x-desktop-user-menu class="hidden lg:block" :name="auth()->user()->name" />

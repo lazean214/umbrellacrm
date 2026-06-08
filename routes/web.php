@@ -6,6 +6,8 @@ use App\Imports\CompanyImport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Maatwebsite\Excel\Facades\Excel;
+use App\Http\Controllers\GdprAdminController;
+
 
 Route::view('/', 'welcome')->name('home');
 
@@ -41,3 +43,22 @@ Route::post('/import-companies', function (Request $request) {
         return back()->with('error', '❌ '.$e->getMessage());
     }
 })->name('import.companies');
+
+
+
+
+// routes/web.php
+Route::middleware(['auth'])->group(function () {
+    Route::get('/gdpr/export', [App\Http\Controllers\GdprController::class, 'showExportForm'])->name('gdpr.export.form');
+    Route::post('/gdpr/export', [App\Http\Controllers\GdprController::class, 'requestExport'])->name('gdpr.export.request');
+    Route::get('/gdpr/download/{token}', [App\Http\Controllers\GdprController::class, 'downloadExport'])->name('gdpr.export.download');
+
+        // Admin GDPR routes (add permission middleware)
+    Route::prefix('admin/gdpr')->name('admin.gdpr.')->middleware(['can:manage-gdpr'])->group(function () {
+        Route::get('/', [GdprAdminController::class, 'dashboard'])->name('dashboard');
+        Route::post('/settings', [GdprAdminController::class, 'updateSettings'])->name('update-settings');
+        Route::post('/run', [GdprAdminController::class, 'runRetentionNow'])->name('run');
+        Route::get('/export-settings', [GdprAdminController::class, 'exportSettings'])->name('export-settings');
+        Route::post('/import-settings', [GdprAdminController::class, 'importSettings'])->name('import-settings');
+    });
+});

@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Fortify;
+use Illuminate\Support\Facades\Gate;
+use App\Models\User;
 
 class FortifyServiceProvider extends ServiceProvider
 {
@@ -29,6 +31,22 @@ class FortifyServiceProvider extends ServiceProvider
         $this->configureActions();
         $this->configureViews();
         $this->configureRateLimiting();
+
+        // Define GDPR management gate
+        Gate::define('manage-gdpr', function (User $user) {
+            // Compliance Team members can manage GDPR
+            if ($user->isComplianceTeam()) {
+                return true;
+            }
+            
+            // Optional: Allow specific emails for testing
+            $allowedEmails = ['admin@umbrellacrm.com', 'compliance@umbrellacrm.com'];
+            if (in_array($user->email, $allowedEmails)) {
+                return true;
+            }
+            
+            return false;
+        });
     }
 
     /**
@@ -77,4 +95,8 @@ class FortifyServiceProvider extends ServiceProvider
             );
         });
     }
+
+        // Gate::define('manage-gdpr', function ($user) {
+        //     return $user->canManageGdpr();
+        // });
 }
