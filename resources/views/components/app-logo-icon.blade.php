@@ -1,1 +1,1 @@
-<img src="/assets/umbrella-company.png" alt="Umbrella Company UK Logo">
+<img src="/assets/crm-logo.png" alt="CRM Logo">

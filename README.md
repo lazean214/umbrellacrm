@@ -1,4 +1,4 @@
-# Umbrella CRM
+# The CRM
 
 A modern, high-performance CRM built with the latest Laravel ecosystem. Designed for managing deals, contacts, companies, and compliance workflows with a focus on speed and developer experience.
 
@@ -74,3 +74,6 @@ composer test
 - `app/Services`: Business logic for GDPR, Email parsing, and Deal management.
 - `database/migrations`: Structured database schema following strict conventions.
 
+## 📜 License
+
+The CRM is open-source software licensed under the [MIT license](https://opensource.org/licenses/MIT).
