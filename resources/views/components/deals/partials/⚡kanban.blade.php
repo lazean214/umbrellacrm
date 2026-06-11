@@ -281,7 +281,8 @@
                     deals,
                 }));
             } catch {
-                /* quota exceeded — silently skip */ }
+                /* quota exceeded — silently skip */
+            }
         }
 
         /**
@@ -311,30 +312,72 @@
             draggingStage: null,
             dragOverStage: null,
 
+            // track if this is the first load after view switch
+            isFirstLoad: true,
+
             // ── Lifecycle ──────────────────────────────────────────────────────────
             init() {
+                // Listen for view change events from Livewire
+                this.$wire.$on('view-changed', (event) => {
+                    if (event.view === 'kanban') {
+                        // Clear cache for this filter set to force fresh data
+                        try {
+                            localStorage.removeItem(cacheKey);
+                        } catch (e) {}
+
+                        // Force reload from Livewire data
+                        this.deals = livewireDeals;
+                        if (this.deals && this.deals.length > 0) {
+                            writeCache(this.deals);
+                        }
+                    }
+                });
+
                 // 1. Serve from cache immediately — board appears with no wait.
                 const cached = readCache();
-                this.deals = cached ?? livewireDeals;
+
+                // Only use cache if we have deals AND it's not the first load after view switch
+                if (cached && cached.length > 0 && !this.isFirstLoad) {
+                    this.deals = cached;
+                } else {
+                    this.deals = livewireDeals;
+                    if (livewireDeals && livewireDeals.length > 0) {
+                        writeCache(this.deals);
+                    }
+                }
+
+                this.isFirstLoad = false;
 
                 // 2. Merge in the authoritative server data (may be identical).
                 //    Use $nextTick so the cached board paints first.
                 this.$nextTick(() => {
-                    this.deals = mergeDeals(this.deals, livewireDeals);
-                    writeCache(this.deals);
+                    if (livewireDeals && livewireDeals.length > 0) {
+                        this.deals = mergeDeals(this.deals, livewireDeals);
+                        writeCache(this.deals);
+                    }
                 });
 
-                // 3. Listen for Livewire updates (e.g. load-more, filter changes).
-                //    When Livewire re-renders it calls $wire.on; we listen for a
-                //    custom "kanban-deals-updated" event dispatched from the PHP side.
-                this.$wire.$watch('deals', (fresh) => {
+                // 3. Watch for Livewire updates (e.g. load-more, filter changes).
+                //    When Livewire re-renders it calls $wire.on; we watch the deals property.
+                this.$watch('$wire.deals', (fresh) => {
+                    if (fresh && fresh.length > 0) {
+                        this.deals = mergeDeals(this.deals, fresh);
+                        writeCache(this.deals);
+                    } else if (fresh && fresh.length === 0 && this.deals.length > 0) {
+                        // If server returns empty but we have deals, keep what we have
+                        console.log('Server returned empty deals, keeping cached data');
+                    } else if (fresh) {
+                        this.deals = fresh;
+                        writeCache(this.deals);
+                    }
+                });
 
-                    this.deals = mergeDeals(
-                        this.deals,
-                        fresh
-                    );
-
-                    writeCache(this.deals);
+                // Also watch for the specific deals-updated event
+                this.$wire.$on('deals-updated', () => {
+                    // Just refresh cache with current deals
+                    if (this.deals && this.deals.length > 0) {
+                        writeCache(this.deals);
+                    }
                 });
             },
 
@@ -412,7 +455,7 @@
                 try {
                     await this.$wire.updateStage(dealId, targetStage);
                     // updateStage already patches $this->deals on the server side;
-                    // Livewire will dispatch 'kanban-deals-updated' to sync back.
+                    // Livewire will trigger a re-render and sync back.
                 } catch (err) {
                     // ── Rollback on failure ───────────────────────────────────────
                     const revert = this.deals.find(d => d.id === dealId);

@@ -132,7 +132,7 @@ new class extends Component
         $this->isShowingCreateModal = false;
         $this->dispatch('dealCreated');
 
-        return redirect()->route('deals.show', $deal);
+        return $this->redirect(route('deals.show', $deal), navigate: true);
     }
 };
 ?>
