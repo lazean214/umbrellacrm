@@ -20,8 +20,9 @@ A modern, high-performance CRM built with the latest Laravel ecosystem. Designed
 - **Frontend:** [Livewire 4](https://livewire.laravel.com)
 - **UI Components:** [Flux UI](https://fluxui.dev)
 - **Styling:** [Tailwind CSS 4](https://tailwindcss.com)
+- **Monitoring:** [Laravel Pulse](https://laravel.com/docs/pulse)
 - **Authentication:** [Laravel Fortify](https://laravel.com/docs/fortify)
-- **Database:** MySQL
+- **Database:** MySQL (optimized with strategic indexing)
 - **Media Management:** [Spatie Laravel MediaLibrary](https://spatie.be/docs/laravel-medialibrary)
 - **Excel/CSV:** [Laravel Excel](https://docs.laravel-excel.com)
 - **Testing:** [Pest PHP](https://pestphp.com)
@@ -43,12 +44,13 @@ This project includes a convenient setup script to get you up and running quickl
    *This will install dependencies (Composer & NPM), create your `.env` file, generate an app key, run migrations, and build assets.*
 
 3. **Configure your Environment:**
-   Edit the `.env` file to set your database credentials and other service keys (Signable, Mail, etc.).
+   Edit the `.env` file to set your database credentials and other service keys (Signable, MyDigitalAccounts, Mail, etc.).
 
 4. **Seed the Database (Optional):**
    ```bash
    php artisan db:seed
    ```
+   *Default Administrator: `admin@thecrm.com` / `password`*
 
 ## 💻 Development
 
@@ -60,7 +62,7 @@ composer run dev
 
 ## 🧪 Testing
 
-Run the test suite using Pest:
+Run the test suite using Pest (Unit & Feature tests):
 
 ```bash
 composer test
@@ -70,9 +72,10 @@ composer test
 
 - `app/Models`: Core business logic and Eloquent models.
 - `app/Livewire`: Interactive UI components.
-- `Modules/Signable`: Specialized module for document signing integration.
+- `Modules/Signable`: Integration module for electronic document signing.
+- `Modules/MyDigitalAccounts`: Integration module for accounting software.
 - `app/Services`: Business logic for GDPR, Email parsing, and Deal management.
-- `database/migrations`: Structured database schema following strict conventions.
+- `database/migrations`: Optimized database schema with performance indexes.
 
 ## 📜 License
 

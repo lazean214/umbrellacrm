@@ -35,7 +35,18 @@ The application integrates with **Signable** via a modular architecture (`Module
 
 ---
 
-## 3. Email Marketing & Automated Notifications
+## 3. Accounting Integration (MyDigitalAccounts)
+
+The CRM is equipped with a dedicated module for **MyDigitalAccounts** integration (`Modules/MyDigitalAccounts`).
+
+### Key Features:
+- **API Client:** A robust, rate-limited Guzzle-based client for interacting with the MDA v1 API.
+- **Resource Management:** Modular actions for fetching and managing Companies, Employees, and Invoices.
+- **Data Integrity:** Strict DTO (Data Transfer Object) implementation to ensure type safety when handling external accounting data.
+
+---
+
+## 4. Email Marketing & Automated Notifications
 
 The CRM features a custom email engine designed for high-touch relationship management.
 
@@ -73,18 +84,19 @@ The CRM uses **Spatie MediaLibrary** to manage files.
 
 ## 🚀 Recommendations & Next Steps
 
-Based on the current architecture, here are the recommended next steps for development:
+Based on the current architecture, here are the next steps for development:
 
 ### Short-Term (Stability & UX)
 1. **Validation Hardening:** Ensure all Signable webhooks use signature verification to prevent spoofing.
-2. **UI Polish:** Leverage more `flux:*` components for the Deal pipeline view (e.g., a Kanban board using `flux:kanban` if available).
-3. **Advanced Filtering:** Implement complex filtering for the Deals list (filter by amount range, stale status, or primary company).
+2. **Monitoring Adoption:** Utilize the newly implemented **Laravel Pulse** dashboard to monitor slow queries and system health.
+3. **Advanced Filtering:** Further enhance the `⚡table` filters (amount range, owner autocomplete).
 
 ### Medium-Term (Feature Expansion)
 1. **Dashboard Analytics:** Create a Livewire-based dashboard showing Deal velocity, conversion rates per Sales user, and Compliance bottlenecks.
-2. **API Integrations:** Expand the module system to include integrations for accounting software (e.g., Xero or QuickBooks) to sync `paid` deals.
+2. **MDA Sync Automation:** Automate the syncing of `compliant` deals into MyDigitalAccounts as new employees/companies.
 3. **Activity Timeline:** Enhance `DealHistory` to provide a visual vertical timeline of every stage change, email sent, and document signed.
 
 ### Long-Term (Infrastructure)
 1. **Audit Logging:** Implement a comprehensive audit trail for sensitive GDPR settings and administrative actions.
-2. **Mobile App:** Consider building a companion mobile app using the existing API structure for Sales teams on the go.
+2. **Backup Strategy:** Deploy **Spatie Laravel Backup** for off-site data redundancy.
+3. **Mobile App:** Consider building a companion mobile app using the existing API structure for Sales teams on the go.
