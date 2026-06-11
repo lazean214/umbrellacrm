@@ -24,3 +24,4 @@ yarn-error.log
 /.phpunit.cache
 /.agents
 /.gemini
+PROCESS.md
