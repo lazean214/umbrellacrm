@@ -1,0 +1,30 @@
+{
+    "name": "nwidart/mydigitalaccounts",
+    "description": "",
+    "authors": [
+        {
+            "name": "Nicolas Widart",
+            "email": "n.widart@gmail.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {
+
+            }
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\MyDigitalAccounts\\": "app/",
+            "Modules\\MyDigitalAccounts\\Database\\Factories\\": "database/factories/",
+            "Modules\\MyDigitalAccounts\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\MyDigitalAccounts\\Tests\\": "tests/"
+        }
+    }
+}

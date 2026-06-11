@@ -125,6 +125,12 @@ return [
     |
     */
 
-    'serializable_classes' => false,
+    'serializable_classes' => [
+        \Illuminate\Support\Collection::class,
+        \Illuminate\Support\LazyCollection::class,
+        \Illuminate\Pagination\LengthAwarePaginator::class,
+        \Illuminate\Pagination\Paginator::class,
+        \stdClass::class,
+    ],
 
 ];

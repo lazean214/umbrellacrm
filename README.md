@@ -33,7 +33,7 @@ This project includes a convenient setup script to get you up and running quickl
 1. **Clone the repository:**
    ```bash
    git clone <repository-url>
-   cd umbrellacrm
+   cd thecrm
    ```
 
 2. **Run the setup command:**

@@ -4,14 +4,14 @@ namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Fortify;
-use Illuminate\Support\Facades\Gate;
-use App\Models\User;
 
 class FortifyServiceProvider extends ServiceProvider
 {
@@ -38,13 +38,13 @@ class FortifyServiceProvider extends ServiceProvider
             if ($user->isComplianceTeam()) {
                 return true;
             }
-            
+
             // Optional: Allow specific emails for testing
-            $allowedEmails = ['admin@umbrellacrm.com', 'compliance@umbrellacrm.com'];
+            $allowedEmails = ['admin@thecrm.com', 'compliance@thecrm.com'];
             if (in_array($user->email, $allowedEmails)) {
                 return true;
             }
-            
+
             return false;
         });
     }
@@ -78,7 +78,7 @@ class FortifyServiceProvider extends ServiceProvider
     private function configureRateLimiting(): void
     {
         RateLimiter::for('two-factor', function (Request $request) {
-            return Limit::perMinute(5)->by($request->session()->get('login.id'));
+            return Limit::perMinute(3)->by($request->session()->get('login.id'));
         });
 
         RateLimiter::for('login', function (Request $request) {
@@ -90,13 +90,13 @@ class FortifyServiceProvider extends ServiceProvider
         RateLimiter::for('passkeys', function (Request $request) {
             $credentialId = $request->input('credential.id');
 
-            return Limit::perMinute(10)->by(
+            return Limit::perMinute(5)->by(
                 ($credentialId ?: $request->session()->getId()).'|'.$request->ip(),
             );
         });
     }
 
-        // Gate::define('manage-gdpr', function ($user) {
-        //     return $user->canManageGdpr();
-        // });
+    // Gate::define('manage-gdpr', function ($user) {
+    //     return $user->canManageGdpr();
+    // });
 }

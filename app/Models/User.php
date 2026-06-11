@@ -36,6 +36,14 @@ class User extends Authenticatable implements PasskeyUser
     }
 
     /**
+     * Check if the user is an administrator
+     */
+    public function isAdmin(): bool
+    {
+        return $this->id === 1 || $this->email === 'admin@thecrm.com';
+    }
+
+    /**
      * Get the user's initials
      */
     public function initials(): string
@@ -144,6 +152,4 @@ class User extends Authenticatable implements PasskeyUser
     {
         return $this->getAllowedDealStages();
     }
-
-
 }
