@@ -381,11 +381,12 @@ new class extends Component {
                 ->map($mapper)
                 ->toArray();
         } else {
-            // Kanban — load all deals for consistent drag-drop experience
-            $allDeals = $query->latest('updated_at')->get()->map($mapper)->toArray();
-            $this->deals = $allDeals;
-            $this->totalDeals = count($allDeals);
-            $this->kanbanHasMore = false; // We load all at once for kanban
+            // Kanban — lazy load: fetch up to kanbanLoadedCount
+            $total = $query->count();
+
+            $this->kanbanHasMore = $total > $this->kanbanLoadedCount;
+
+            $this->deals = $query->latest('updated_at')->take($this->kanbanLoadedCount)->get()->map($mapper)->toArray();
         }
     }
 
@@ -797,12 +798,7 @@ new class extends Component {
         $this->currentPage = 1;
         $this->kanbanLoadedCount = 50;
         $this->persistState();
-
-        // Force a fresh load when switching views
         $this->loadDeals();
-
-        // Dispatch an event to notify the kanban board that fresh data is available
-        $this->dispatch('view-changed', view: $view);
     }
 
     public function toggleColumn(string $column): void
@@ -966,10 +962,21 @@ new class extends Component {
          KANBAN BOARD VIEW
     ══════════════════════════════════════ --}}
     @if ($view === 'kanban')
-        <div wire:key="kanban-board-{{ md5(json_encode($deals)) }}">
+        <div wire:key="kanban-board-{{ $kanbanLoadedCount }}-{{ $totalDeals }}">
             @include('components.deals.partials.⚡kanban', [
                 'stageConfig' => $stageConfig,
             ])
+
+            @if ($kanbanHasMore)
+                <div x-data x-intersect.threshold.10="$wire.loadMoreKanban()"
+                    class="h-10 flex items-center justify-center">
+                    <svg class="w-5 h-5 animate-spin text-slate-400" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                            stroke-width="4" />
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                </div>
+            @endif
         </div>
     @endif
 
@@ -1101,4 +1108,6 @@ new class extends Component {
             </div>
         </div>
     @endif
+</div>
+
 </div>
