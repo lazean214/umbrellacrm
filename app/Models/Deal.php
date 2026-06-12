@@ -3,23 +3,15 @@
 namespace App\Models;
 
 use App\Enums\DealStage;
-<<<<<<< HEAD
 use App\Traits\LogsDealHistory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Builder;
-=======
-use Illuminate\Database\Eloquent\Factories\HasFactory;
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
-<<<<<<< HEAD
-=======
-use App\Traits\LogsDealHistory;
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
 
 class Deal extends Model implements HasMedia
 {
@@ -67,11 +59,7 @@ class Deal extends Model implements HasMedia
     |--------------------------------------------------------------------------
     */
 
-<<<<<<< HEAD
     public function contacts(): BelongsToMany
-=======
-    public function contacts()
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         return $this->belongsToMany(
             Contact::class,
@@ -79,11 +67,7 @@ class Deal extends Model implements HasMedia
         )->withPivot('is_primary');
     }
 
-<<<<<<< HEAD
     public function companies(): BelongsToMany
-=======
-    public function companies()
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         return $this->belongsToMany(
             Company::class,
@@ -91,11 +75,7 @@ class Deal extends Model implements HasMedia
         )->withPivot('is_primary');
     }
 
-<<<<<<< HEAD
     public function primaryContact(): ?Contact
-=======
-    public function primaryContact()
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         return $this->contacts()
             ->wherePivot('is_primary', true)
@@ -103,11 +83,7 @@ class Deal extends Model implements HasMedia
             ?? $this->contacts()->first();
     }
 
-<<<<<<< HEAD
     public function primaryCompany(): ?Company
-=======
-    public function primaryCompany()
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         return $this->companies()
             ->wherePivot('is_primary', true)
@@ -122,11 +98,7 @@ class Deal extends Model implements HasMedia
         );
     }
 
-<<<<<<< HEAD
     public function user(): BelongsTo
-=======
-    public function user()
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         return $this->belongsTo(User::class);
     }
@@ -137,11 +109,7 @@ class Deal extends Model implements HasMedia
     |--------------------------------------------------------------------------
     */
 
-<<<<<<< HEAD
     public function scopeVisibleTo(Builder $query, ?User $user): Builder
-=======
-    public function scopeVisibleTo($query, $user)
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         if (! $user) {
             return $query;
@@ -171,11 +139,7 @@ class Deal extends Model implements HasMedia
         $this->addMediaCollection('contract_documents');
     }
 
-<<<<<<< HEAD
     public function signableEnvelopes(): HasMany
-=======
-    public function signableEnvelopes()
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         return $this->hasMany(SignableEnvelope::class);
     }

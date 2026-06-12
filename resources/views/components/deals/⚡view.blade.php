@@ -112,11 +112,7 @@ new class extends Component {
         }
     }
 
-<<<<<<< HEAD
     public function loadDeal(): void
-=======
-    private function loadDeal(): void
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         $this->deals = Deal::with('contacts', 'companies', 'media', 'signableEnvelopes', 'user')->findOrFail($this->dealId);
 

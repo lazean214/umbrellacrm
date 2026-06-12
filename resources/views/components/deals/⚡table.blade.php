@@ -3,22 +3,13 @@
 use Livewire\Component;
 use App\Models\Deal;
 use App\Models\User;
-<<<<<<< HEAD
 use App\Enums\DealStage;
 use Livewire\Attributes\On;
-=======
-use Illuminate\Support\Str;
-use App\Enums\DealStage;
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
 
 new class extends Component {
     public $deals = [];
     public $view = 'kanban'; // 'kanban' or 'table'
     public array $stages = [];
-<<<<<<< HEAD
-=======
-    public int $refreshInterval = 5;
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
 
     // --- Pagination (table view) ---
     public int $perPage = 25;
@@ -81,23 +72,12 @@ new class extends Component {
     public $dateFrom = null;
     public $dateTo = null;
 
-<<<<<<< HEAD
-=======
-    /**
-     * Whether the dateFrom was auto-set to start of month (not user-defined).
-     * Used to trigger auto-widening when results are sparse.
-     */
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     public bool $isDefaultDateRange = false;
 
     // --- BATCH OPERATIONS ---
     public array $selectedDeals = [];
     public bool $selectAll = false;
-<<<<<<< HEAD
     public string $batchOperation = '';
-=======
-    public string $batchOperation = ''; // 'owner', 'stage', 'delete'
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     public string $batchOwnerValue = '';
     public string $batchStageValue = '';
     public bool $showBatchModal = false;
@@ -107,7 +87,6 @@ new class extends Component {
     public array $allCompanies = [];
 
     /**
-<<<<<<< HEAD
      * Push an incoming background deal straight into the tracking array on-the-fly.
      */
     #[On('echo:deals,DealCreated')]
@@ -164,10 +143,6 @@ new class extends Component {
         $this->totalDeals--;
     }
 
-=======
-     * Shared reset-and-reload for every filter/paging change.
-     */
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     private function onFilterChanged(): void
     {
         $this->currentPage = 1;
@@ -207,25 +182,13 @@ new class extends Component {
     }
     public function updatedDateFrom(): void
     {
-<<<<<<< HEAD
         $this->isDefaultDateRange = false;
         $this->onFilterChanged();
     }
-=======
-        // Once the user touches the date, it's no longer the auto-default
-        $this->isDefaultDateRange = false;
-        $this->onFilterChanged();
-    }
-
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     public function updatedDateTo(): void
     {
         $this->onFilterChanged();
     }
-<<<<<<< HEAD
-=======
-
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     public function updatedPerPage(): void
     {
         $this->currentPage = 1;
@@ -234,15 +197,9 @@ new class extends Component {
         $this->resetBatchState();
     }
 
-<<<<<<< HEAD
     public function mount(): void
     {
-        $this->stages = array_map(fn (DealStage $stage) => $stage->value, DealStage::cases());
-=======
-    public function mount()
-    {
-        $this->stages = array_map(fn($s) => $s->value, [DealStage::DOC_SENT, DealStage::DOC_SIGNED, DealStage::COMPLIANT, DealStage::READY_FOR_PAYMENT, DealStage::PAID]);
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
+        $this->stages = array_map(fn(DealStage $stage) => $stage->value, DealStage::cases());
         $this->allUsers = User::orderBy('name')
             ->get(['id', 'name', 'email'])
             ->toArray();
@@ -250,10 +207,6 @@ new class extends Component {
             ->get(['id', 'name'])
             ->toArray();
 
-<<<<<<< HEAD
-=======
-        // ── Restore persisted view state from session ──
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
         $state = session('deals_view_state', []);
 
         $this->view = $state['view'] ?? 'kanban';
@@ -268,11 +221,6 @@ new class extends Component {
         $this->maxAmount = $state['maxAmount'] ?? null;
         $this->isDefaultDateRange = $state['isDefaultDateRange'] ?? false;
 
-<<<<<<< HEAD
-=======
-        // If a date range was explicitly persisted, restore it.
-        // Otherwise default to start of current month so the initial load is fast.
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
         if (array_key_exists('dateFrom', $state)) {
             $this->dateFrom = $state['dateFrom'];
             $this->dateTo = $state['dateTo'];
@@ -284,11 +232,6 @@ new class extends Component {
 
         $this->loadDeals();
 
-<<<<<<< HEAD
-=======
-        // Auto-widen: if we loaded with the default month filter and got < 100
-        // results, silently remove the date restriction so nothing is hidden.
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
         if ($this->isDefaultDateRange && $this->getTotalResultCount() < 100) {
             $this->dateFrom = null;
             $this->isDefaultDateRange = false;
@@ -296,12 +239,6 @@ new class extends Component {
         }
     }
 
-<<<<<<< HEAD
-=======
-    /**
-     * Persist the current UI state to the session.
-     */
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     private function persistState(): void
     {
         session([
@@ -323,100 +260,51 @@ new class extends Component {
         ]);
     }
 
-<<<<<<< HEAD
-=======
-    /**
-     * Total results across current filters — works for both views.
-     * In table view $totalDeals is set by loadDeals(); in kanban we count $deals.
-     */
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     private function getTotalResultCount(): int
     {
         return $this->view === 'table' ? $this->totalDeals : count($this->deals);
     }
 
-<<<<<<< HEAD
-=======
-    /**
-     * Get the currently authenticated user
-     */
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     private function getCurrentUser(): ?User
     {
         return auth()->user();
     }
 
-<<<<<<< HEAD
-=======
-    /**
-     * Check if current user is in Sales Team
-     */
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     public function isSalesTeam(): bool
     {
         $user = $this->getCurrentUser();
         return $user && $user->isSalesTeam();
     }
 
-<<<<<<< HEAD
-=======
-    /**
-     * Check if current user is in Compliance Team
-     */
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     public function isComplianceTeam(): bool
     {
         $user = $this->getCurrentUser();
         return $user && $user->isComplianceTeam();
     }
 
-<<<<<<< HEAD
-=======
-    /**
-     * Get allowed stages for current user
-     */
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     public function getAllowedStagesForUser(): array
     {
         $user = $this->getCurrentUser();
         return $user ? $user->getAllowedDealStages() : [];
     }
 
-<<<<<<< HEAD
-=======
-    /**
-     * Check if current user can move deals to stages
-     */
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     public function canEditDealStage(): bool
     {
         return count($this->getAllowedStagesForUser()) > 0;
     }
 
-<<<<<<< HEAD
     public function canEditStage(string $stage, ?string $currentDealStage = null): bool
-=======
-    /**
-     * Check if specific stage can be edited by current user
-     */
-    public function canEditStage($stage, $currentDealStage = null): bool
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         $user = $this->getCurrentUser();
         if (!$user) {
             return false;
         }
-<<<<<<< HEAD
-=======
-        // If the deal is already on a restricted stage, Sales cannot move it anywhere
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
         if ($currentDealStage && $user->isSalesTeam() && !$user->canMoveToStage($currentDealStage)) {
             return false;
         }
         return $user->canMoveToStage($stage);
     }
 
-<<<<<<< HEAD
     #[On('triggerLoadDeal')]
     public function loadDeals(): void
     {
@@ -440,66 +328,12 @@ new class extends Component {
         if (!empty($this->filterStage)) {
             $query->where('stage', $this->filterStage);
         }
-=======
-    public function loadDeals(): void
-    {
-        $query = Deal::query()->with(['contacts:id,first_name,last_name', 'companies:id,name,email,phone,domain', 'user:id,name,email']);
-        $user = $this->getCurrentUser();
-
-        // ──────────────────────────────────────
-        // APPLY TEAM RESTRICTIONS
-        // ──────────────────────────────────────
-
-        if ($user) {
-            // Sales Team: Only see their own deals
-            if ($user->isSalesTeam()) {
-                $query->where('user_id', $user->id);
-            }
-            // Compliance Team & no-team users: see all deals
-        }
-
-        // ──────────────────────────────────────
-        // APPLY FILTERS
-        // ──────────────────────────────────────
-
-        // Deal name
-        if (!empty($this->filterDealName)) {
-            $query->where('name', 'like', '%' . $this->filterDealName . '%');
-        }
-
-        // Deal owner (user name)
-        if (!empty($this->filterOwner)) {
-            $query->whereHas('user', fn($q) => $q->where('name', 'like', '%' . $this->filterOwner . '%'));
-        }
-
-        // Contact name
-        if (!empty($this->filterContact)) {
-            $query->whereHas('contacts', fn($q) => $q->where(\DB::raw("CONCAT(first_name, ' ', last_name)"), 'like', '%' . $this->filterContact . '%'));
-        }
-
-        // Company name (related companies)
-        if (!empty($this->filterCompanyName)) {
-            $query->whereHas('companies', fn($q) => $q->where('name', 'like', '%' . $this->filterCompanyName . '%'));
-        }
-
-        // Stage
-        if (!empty($this->filterStage)) {
-            $query->where('stage', $this->filterStage);
-        }
-
-        // Amount range
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
         if (!is_null($this->minAmount) && $this->minAmount !== '') {
             $query->where('amount', '>=', $this->minAmount);
         }
         if (!is_null($this->maxAmount) && $this->maxAmount !== '') {
             $query->where('amount', '<=', $this->maxAmount);
         }
-<<<<<<< HEAD
-=======
-
-        // Created date range
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
         if (!empty($this->dateFrom)) {
             $query->whereDate('created_at', '>=', $this->dateFrom);
         }
@@ -507,28 +341,10 @@ new class extends Component {
             $query->whereDate('created_at', '<=', $this->dateTo);
         }
 
-<<<<<<< HEAD
         if ($this->view === 'table') {
             // Use cursor pagination for better performance
             $countQuery = clone $query;
             $this->totalDeals = $countQuery->count();
-=======
-        // ──────────────────────────────────────
-        // FETCH — strategy depends on active view
-        // ──────────────────────────────────────
-
-        $mapper = function ($deal) {
-            $arr = $deal->toArray();
-            $arr['stage'] = $deal->stage instanceof \BackedEnum ? $deal->stage->value : (string) $deal->stage;
-            return $arr;
-        };
-
-        if ($this->view === 'table') {
-            // Paginated
-            $countQuery = clone $query;
-
-            $this->totalDeals = cache()->remember('deals_count_' . md5($query->toSql() . serialize($query->getBindings())), now()->addSeconds(15), fn() => $countQuery->count());
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
             $this->totalPages = max(1, (int) ceil($this->totalDeals / $this->perPage));
             $this->currentPage = min($this->currentPage, $this->totalPages);
 
@@ -540,13 +356,12 @@ new class extends Component {
                 ->skip(($this->currentPage - 1) * $this->perPage)
                 ->take($this->perPage)
                 ->get()
-<<<<<<< HEAD
-                ->map(fn (Deal $deal) => $this->dealToArray($deal))
+                ->map(fn(Deal $deal) => $this->dealToArray($deal))
                 ->toArray();
         } else {
             $total = $query->count();
             $this->kanbanHasMore = $total > $this->kanbanLoadedCount;
-            $this->deals = $query->latest('updated_at')->take($this->kanbanLoadedCount)->get()->map(fn (Deal $deal) => $this->dealToArray($deal))->toArray();
+            $this->deals = $query->latest('updated_at')->take($this->kanbanLoadedCount)->get()->map(fn(Deal $deal) => $this->dealToArray($deal))->toArray();
         }
     }
 
@@ -565,28 +380,6 @@ new class extends Component {
         $this->dispatch('deals-refreshed');
     }
 
-=======
-                ->map($mapper)
-                ->toArray();
-        } else {
-            // Kanban — lazy load: fetch up to kanbanLoadedCount
-            $total = $query->count();
-
-            $this->kanbanHasMore = $total > $this->kanbanLoadedCount;
-
-            $this->deals = $query->latest('updated_at')->take($this->kanbanLoadedCount)->get()->map($mapper)->toArray();
-        }
-    }
-
-    public function refreshDeals(): void
-    {
-        $this->loadDeals();
-    }
-
-    /**
-     * Load the next batch of 50 deals in kanban view.
-     */
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     public function loadMoreKanban(): void
     {
         $this->kanbanLoadedCount += 50;
@@ -596,11 +389,6 @@ new class extends Component {
     public function resetFilters(): void
     {
         $this->reset(['filterDealName', 'filterOwner', 'filterContact', 'filterCompanyName', 'filterStage', 'minAmount', 'maxAmount', 'dateTo']);
-<<<<<<< HEAD
-=======
-
-        // Reset to the default month window, not all-time
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
         $this->dateFrom = now()->startOfMonth()->toDateString();
         $this->isDefaultDateRange = true;
         $this->currentPage = 1;
@@ -609,10 +397,6 @@ new class extends Component {
         $this->loadDeals();
         $this->resetBatchState();
 
-<<<<<<< HEAD
-=======
-        // Auto-widen if sparse
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
         if ($this->isDefaultDateRange && $this->getTotalResultCount() < 100) {
             $this->dateFrom = null;
             $this->isDefaultDateRange = false;
@@ -627,12 +411,6 @@ new class extends Component {
         $this->resetBatchState();
     }
 
-<<<<<<< HEAD
-=======
-    /**
-     * Explicitly load all-time data (user clicked "View all time →").
-     */
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     public function showAllTime(): void
     {
         $this->dateFrom = null;
@@ -647,33 +425,10 @@ new class extends Component {
 
     public function hasActiveFilters(): bool
     {
-<<<<<<< HEAD
         return !empty($this->filterDealName) || !empty($this->filterOwner) || !empty($this->filterContact) || !empty($this->filterCompanyName) || !empty($this->filterStage) || ($this->minAmount !== null && $this->minAmount !== '') || ($this->maxAmount !== null && $this->maxAmount !== '') || (!$this->isDefaultDateRange && !empty($this->dateFrom)) || !empty($this->dateTo);
     }
 
     public function updateStage(int $dealId, string $newStage): void
-=======
-        return !empty($this->filterDealName) ||
-            !empty($this->filterOwner) ||
-            !empty($this->filterContact) ||
-            !empty($this->filterCompanyName) ||
-            !empty($this->filterStage) ||
-            ($this->minAmount !== null && $this->minAmount !== '') ||
-            ($this->maxAmount !== null && $this->maxAmount !== '') ||
-            // Only count dateFrom as active if the user explicitly set it
-            (!$this->isDefaultDateRange && !empty($this->dateFrom)) ||
-            !empty($this->dateTo);
-    }
-
-    /**
-     * Update deal stage with authorization checks
-     *
-     * - Sales Team: Can only move to Doc Sent, Doc Signed, Compliant
-     * - Compliance Team: Can move to any stage
-     * - Must own the deal (Sales Team) or be in Compliance Team
-     */
-    public function updateStage($dealId, $newStage)
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         $user = $this->getCurrentUser();
 
@@ -685,80 +440,34 @@ new class extends Component {
         $deal = Deal::findOrFail($dealId);
         $oldStage = $deal->stage->value;
 
-<<<<<<< HEAD
         if ($user->isSalesTeam()) {
-=======
-        // ─────────────────────────────
-        // AUTHORIZATION
-        // ─────────────────────────────
-
-        if ($user->isSalesTeam()) {
-            // Must own deal
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
             if ($deal->user_id !== $user->id) {
                 $this->dispatch('error', message: 'You can only edit your own deals');
                 return;
             }
-<<<<<<< HEAD
-=======
-
-            // Locked stages
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
             if (!$user->canMoveToStage($deal->stage->value)) {
                 $this->dispatch('error', message: 'This deal is managed by the Compliance Team.');
                 return;
             }
-<<<<<<< HEAD
             if (!$user->canMoveToStage($newStage)) {
                 $allowedStages = implode(', ', $user->getAllowedDealStages());
                 $this->dispatch('error', message: "You can only move to: {$allowedStages}");
-=======
-
-            // Target stage restriction
-            if (!$user->canMoveToStage($newStage)) {
-                $allowedStages = implode(', ', $user->getAllowedDealStages());
-
-                $this->dispatch('error', message: "You can only move to: {$allowedStages}");
-
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
                 return;
             }
         }
 
-<<<<<<< HEAD
         $deal->stage = DealStage::from($newStage);
         $deal->save();
 
         $reason = $user->isSalesTeam() ? 'Sales Team action' : 'Compliance Team action';
         $deal->logStageChange($oldStage, $newStage, $reason);
 
-=======
-        // ─────────────────────────────
-        // SAVE TO DATABASE
-        // ─────────────────────────────
-
-        $deal->stage = DealStage::from($newStage);
-        $deal->save();
-
-        $this->dispatch('deals-updated');
-
-        // Log the stage change with reason
-        $reason = $user->isSalesTeam() ? 'Sales Team action' : 'Compliance Team action';
-        $deal->logStageChange($oldStage, $newStage, $reason);
-
-        // ─────────────────────────────
-        // UPDATE LOCAL ARRAY ONLY
-        // NO FULL loadDeals()
-        // ─────────────────────────────
-
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
         foreach ($this->deals as &$existingDeal) {
             if ($existingDeal['id'] == $dealId) {
                 $existingDeal['stage'] = $newStage;
                 break;
             }
         }
-<<<<<<< HEAD
         unset($existingDeal);
 
         $this->dispatch('success', message: 'Deal moved successfully');
@@ -767,22 +476,6 @@ new class extends Component {
 
     // Batch operations (keep existing implementation)
     public function resetBatchState(): void
-=======
-
-        unset($existingDeal);
-
-        $this->dispatch('success', message: 'Deal moved successfully');
-    }
-
-    // ─────────────────────────────────────────────────
-    // BATCH OPERATIONS
-    // ─────────────────────────────────────────────────
-
-    /**
-     * Reset batch operation state
-     */
-    public function resetBatchState()
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         $this->selectedDeals = [];
         $this->selectAll = false;
@@ -791,7 +484,6 @@ new class extends Component {
         $this->batchStageValue = '';
         $this->showBatchModal = false;
         $this->showConfirmModal = false;
-<<<<<<< HEAD
     }
 
     public function toggleSelectAll(): void
@@ -806,82 +498,29 @@ new class extends Component {
                 $this->selectedDeals = array_map(fn($deal) => $deal['id'], $this->deals);
             }
         } else {
-=======
-
-        $this->loadDeals();
-
-        $this->dispatch('deals-updated');
-    }
-
-    /**
-     * Toggle select all checkbox
-     * Shows confirmation modal if filters are active
-     */
-    public function toggleSelectAll()
-    {
-        $this->selectAll = !$this->selectAll;
-
-        if ($this->selectAll) {
-            // If filters are active, show confirmation modal
-            if ($this->hasActiveFilters()) {
-                $this->showConfirmModal = true;
-                $dealCount = count($this->deals);
-                $this->confirmMessage = "Select all {$dealCount} deals from the filtered results? " . 'This will apply the batch operation to all matching records.';
-            } else {
-                // No filters, just select all visible deals
-                $this->selectedDeals = array_map(fn($deal) => $deal['id'], $this->deals);
-            }
-        } else {
-            // Deselect all
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
             $this->selectedDeals = [];
         }
     }
 
-<<<<<<< HEAD
     public function confirmSelectAll(): void
-=======
-    /**
-     * Confirm select all from modal
-     */
-    public function confirmSelectAll()
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         $this->selectedDeals = array_map(fn($deal) => $deal['id'], $this->deals);
         $this->showConfirmModal = false;
     }
 
-<<<<<<< HEAD
     public function cancelSelectAll(): void
-=======
-    /**
-     * Cancel select all and close modal
-     */
-    public function cancelSelectAll()
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         $this->selectAll = false;
         $this->showConfirmModal = false;
     }
 
-<<<<<<< HEAD
     public function toggleDealSelection(int $dealId): void
-=======
-    /**
-     * Toggle individual deal selection
-     */
-    public function toggleDealSelection($dealId)
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         if (in_array($dealId, $this->selectedDeals)) {
             $this->selectedDeals = array_filter($this->selectedDeals, fn($id) => $id !== $dealId);
             $this->selectAll = false;
         } else {
             $this->selectedDeals[] = $dealId;
-<<<<<<< HEAD
-=======
-            // Check if all visible deals are now selected
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
             $visibleIds = array_map(fn($deal) => $deal['id'], $this->deals);
             if (count($this->selectedDeals) === count($visibleIds) && empty(array_diff($visibleIds, $this->selectedDeals))) {
                 $this->selectAll = true;
@@ -889,94 +528,48 @@ new class extends Component {
         }
     }
 
-<<<<<<< HEAD
-=======
-    /**
-     * Get count of selected deals
-     */
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     public function getSelectedCount(): int
     {
         return count($this->selectedDeals);
     }
 
-<<<<<<< HEAD
     public function openBatchModal(string $operation): void
-=======
-    /**
-     * Open batch operation modal
-     */
-    public function openBatchModal($operation)
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         if (empty($this->selectedDeals)) {
             $this->dispatch('error', message: 'Please select at least one deal');
             return;
         }
-<<<<<<< HEAD
-=======
-
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
         $this->batchOperation = $operation;
         $this->batchOwnerValue = '';
         $this->batchStageValue = '';
         $this->showBatchModal = true;
     }
 
-<<<<<<< HEAD
     public function confirmBatchUpdateOwner(): void
-=======
-    /**
-     * Confirm batch owner update
-     */
-    public function confirmBatchUpdateOwner()
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         if (empty($this->batchOwnerValue)) {
             $this->dispatch('error', message: 'Please select an owner');
             return;
         }
-<<<<<<< HEAD
-=======
-
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
         $selectedCount = count($this->selectedDeals);
         $this->confirmMessage = "Update owner for {$selectedCount} deal(s)?";
         $this->showBatchModal = false;
         $this->showConfirmModal = true;
     }
 
-<<<<<<< HEAD
     public function confirmBatchUpdateStage(): void
-=======
-    /**
-     * Confirm batch stage update
-     */
-    public function confirmBatchUpdateStage()
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         if (empty($this->batchStageValue)) {
             $this->dispatch('error', message: 'Please select a stage');
             return;
         }
-<<<<<<< HEAD
-=======
-
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
         $selectedCount = count($this->selectedDeals);
         $this->confirmMessage = "Update stage for {$selectedCount} deal(s)?";
         $this->showBatchModal = false;
         $this->showConfirmModal = true;
     }
 
-<<<<<<< HEAD
     public function confirmBatchDelete(): void
-=======
-    /**
-     * Confirm batch delete
-     */
-    public function confirmBatchDelete()
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         $selectedCount = count($this->selectedDeals);
         $this->confirmMessage = "Delete {$selectedCount} deal(s)? This action cannot be undone.";
@@ -984,7 +577,6 @@ new class extends Component {
         $this->showConfirmModal = true;
     }
 
-<<<<<<< HEAD
     public function executeBatchUpdateOwner(): void
     {
         $user = $this->getCurrentUser();
@@ -1028,126 +620,22 @@ new class extends Component {
     }
 
     public function closeBatchModal(): void
-=======
-    /**
-     * Execute batch owner update
-     */
-    public function executeBatchUpdateOwner()
-    {
-        $user = $this->getCurrentUser();
-
-        if (!$user) {
-            $this->dispatch('error', message: 'Unauthorized');
-            return;
-        }
-
-        // Authorization: Only compliance can batch update owner
-        if (!$this->isComplianceTeam()) {
-            $this->dispatch('error', message: 'Only Compliance Team can perform batch updates');
-            return;
-        }
-
-        Deal::whereIn('id', $this->selectedDeals)->update([
-            'user_id' => $this->batchOwnerValue,
-        ]);
-
-        $this->loadDeals();
-        $this->resetBatchState();
-
-        $this->dispatch('success', message: 'Owner updated for ' . count($this->selectedDeals) . ' deal(s)');
-    }
-
-    /**
-     * Execute batch stage update
-     */
-    public function executeBatchUpdateStage()
-    {
-        $user = $this->getCurrentUser();
-
-        if (!$user) {
-            $this->dispatch('error', message: 'Unauthorized');
-            return;
-        }
-
-        // Authorization: Only compliance can batch update stage
-        if (!$this->isComplianceTeam()) {
-            $this->dispatch('error', message: 'Only Compliance Team can perform batch updates');
-            return;
-        }
-
-        Deal::whereIn('id', $this->selectedDeals)->update([
-            'stage' => $this->batchStageValue,
-        ]);
-
-        $this->loadDeals();
-        $this->resetBatchState();
-
-        $this->dispatch('success', message: 'Stage updated for ' . count($this->selectedDeals) . ' deal(s)');
-    }
-
-    /**
-     * Execute batch delete
-     */
-    public function executeBatchDelete()
-    {
-        $user = $this->getCurrentUser();
-
-        if (!$user) {
-            $this->dispatch('error', message: 'Unauthorized');
-            return;
-        }
-
-        // Authorization: Only compliance can batch delete
-        if (!$this->isComplianceTeam()) {
-            $this->dispatch('error', message: 'Only Compliance Team can delete deals');
-            return;
-        }
-
-        $count = count($this->selectedDeals);
-        Deal::whereIn('id', $this->selectedDeals)->delete();
-
-        $this->loadDeals();
-        $this->resetBatchState();
-
-        $this->dispatch('success', message: "{$count} deal(s) deleted successfully");
-    }
-
-    /**
-     * Close modals and reset
-     */
-    public function closeBatchModal()
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         $this->showBatchModal = false;
         $this->showConfirmModal = false;
     }
 
-<<<<<<< HEAD
     public function confirmBatchAction(): void
-=======
-    /**
-     * Confirm from confirmation modal
-     */
-    public function confirmBatchAction()
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         match ($this->batchOperation) {
             'owner' => $this->executeBatchUpdateOwner(),
             'stage' => $this->executeBatchUpdateStage(),
             'delete' => $this->executeBatchDelete(),
         };
-<<<<<<< HEAD
         $this->showConfirmModal = false;
     }
 
     public function setView(string $view): void
-=======
-
-        $this->showConfirmModal = false;
-    }
-
-    public function setView($view)
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {
         $this->view = $view;
         $this->currentPage = 1;
@@ -1159,20 +647,12 @@ new class extends Component {
     public function toggleColumn(string $column): void
     {
         if (in_array($column, $this->visibleColumns)) {
-<<<<<<< HEAD
-=======
-            // Always keep at least one column visible
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
             if (count($this->visibleColumns) > 1) {
                 $this->visibleColumns = array_values(array_filter($this->visibleColumns, fn($c) => $c !== $column));
             }
         } else {
             $this->visibleColumns[] = $column;
         }
-<<<<<<< HEAD
-=======
-
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
         $this->persistState();
     }
 
@@ -1208,13 +688,6 @@ new class extends Component {
 ?>
 
 @php
-<<<<<<< HEAD
-=======
-    /**
-     * Stage color config — keys match DealStage enum values exactly.
-     * DealStage values use spaces: 'doc sent', 'doc signed', etc.
-     */
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     $stageConfig = [
         'doc sent' => [
             'accent' => '#4f46e5',
@@ -1254,11 +727,7 @@ new class extends Component {
     ];
 @endphp
 
-<<<<<<< HEAD
 <div x-data="{
-=======
-<div wire:poll.3s="refreshDeals" x-data="{
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     draggingId: null,
     draggingStage: null,
     onDragStart(dealId, stage) {
@@ -1272,7 +741,6 @@ new class extends Component {
         this.draggingId = null;
         this.draggingStage = null;
     },
-<<<<<<< HEAD
     onDragOver(e) { e.preventDefault(); },
     isRefreshing: false,
     async refresh() {
@@ -1289,16 +757,6 @@ new class extends Component {
     </div>
 
     {{-- Header with manual refresh button --}}
-=======
-    onDragOver(e) { e.preventDefault(); }
-}"
-    class="space-y-6 w-full mx-auto p-4 sm:p-6 lg:p-8 antialiased text-slate-900 dark:text-slate-100">
-    {{-- Loading bar --}}
-    <div wire:loading.delay class="fixed top-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 z-50 animate-pulse">
-    </div>
-
-    {{-- ── Header ── --}}
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     <div class="w-full border-b border-slate-200 dark:border-slate-800 pb-5 mb-4">
         <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div>
@@ -1310,7 +768,6 @@ new class extends Component {
                 </p>
             </div>
 
-<<<<<<< HEAD
             <div class="flex items-center gap-2 shrink-0">
                 {{-- Manual refresh button --}}
                 <button @click="refresh()" :disabled="isRefreshing"
@@ -1323,10 +780,6 @@ new class extends Component {
                     Refresh
                 </button>
 
-=======
-            {{-- View toggle + Export --}}
-            <div class="flex items-center gap-2 shrink-0">
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
                 <div class="inline-flex rounded-lg shadow-sm bg-slate-100 dark:bg-slate-800 p-1 gap-0.5">
                     <button wire:click="setView('kanban')"
                         class="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium rounded-md transition-all duration-150
@@ -1360,12 +813,6 @@ new class extends Component {
 
     @include('components.deals.partials.⚡filters')
 
-<<<<<<< HEAD
-=======
-    {{-- ══════════════════════════════════════
-         KANBAN BOARD VIEW
-    ══════════════════════════════════════ --}}
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     @if ($view === 'kanban')
         <div wire:key="kanban-board-{{ $kanbanLoadedCount }}-{{ $totalDeals }}">
             @include('components.deals.partials.⚡kanban', [
@@ -1385,23 +832,13 @@ new class extends Component {
         </div>
     @endif
 
-<<<<<<< HEAD
-=======
-    {{-- ══════════════════════════════════════
-         TABLE LIST VIEW WITH BATCH OPERATIONS
-    ══════════════════════════════════════ --}}
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     @if ($view === 'table')
         <div wire:key="table-view-{{ $currentPage }}-{{ $totalDeals }}">
             @include('components.deals.partials.⚡table-view', ['stageConfig' => $stageConfig])
         </div>
     @endif
 
-<<<<<<< HEAD
     {{-- Batch Actions Floating Toolbar (unchanged) --}}
-=======
-    {{-- BATCH ACTIONS FLOATING TOOLBAR --}}
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     @if ($this->getSelectedCount() > 0)
         <div
             class="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 shadow-xl z-50">
@@ -1411,10 +848,6 @@ new class extends Component {
                 </div>
 
                 <div class="flex items-center gap-3">
-<<<<<<< HEAD
-=======
-                    {{-- Dropdown Container with Alpine Management --}}
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
                     <div class="relative" x-data="{ open: false }" @click.away="open = false">
                         <button type="button" @click="open = !open"
                             class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors">
@@ -1452,11 +885,7 @@ new class extends Component {
         </div>
     @endif
 
-<<<<<<< HEAD
     {{-- MODALS (unchanged) --}}
-=======
-    {{-- MODALS --}}
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     @if ($showBatchModal)
         <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
             wire:click.self="closeBatchModal">
@@ -1528,8 +957,3 @@ new class extends Component {
         </div>
     @endif
 </div>
-<<<<<<< HEAD
-=======
-
-</div>
->>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
