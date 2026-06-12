@@ -1,0 +1,134 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Contact;
+use App\Models\User;
+use App\Models\Deal;
+use App\Models\DealEmailLog;
+use App\Models\GdprSetting;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+class GdprRetentionService
+{
+    public function anonymizeExpiredContacts(): int
+    {
+        $setting = GdprSetting::getRetentionFor('contacts');
+        if (!$setting || !$setting->is_enabled) {
+            return 0;
+        }
+
+        $expiryDate = Carbon::now()->subMonths($setting->retention_months);
+
+        $contacts = Contact::where('anonymised_at', null)
+            ->where(function ($query) use ($expiryDate) {
+                $query->where('last_activity_at', '<', $expiryDate)
+                    ->orWhereNull('last_activity_at');
+            })
+            ->whereDoesntHave('deals', function ($q) {
+                $q->whereNotIn('stage', ['closed_lost', 'compliant']);
+            })
+            ->get();
+
+        $count = 0;
+        foreach ($contacts as $contact) {
+            DB::transaction(function () use ($contact) {
+                $contact->update([
+                    'first_name' => 'ANON_' . substr(md5($contact->id), 0, 8),
+                    'last_name' => 'ANON',
+                    'email' => 'deleted_' . $contact->id . '@gdpr.local',
+                    'phone' => null,
+                    'street_address' => null,
+                    'city' => null,
+                    'state' => null,
+                    'postal_code' => null,
+                    'country' => null,
+                    'ni_number' => null,
+                    'bank' => null,
+                    'account_number' => null,
+                    'sort_code' => null,
+                    'date_of_birth' => null,
+                    'marital_status' => null,
+                    'gender' => null,
+                    'anonymised_at' => now(),
+                ]);
+                $contact->companies()->detach();
+            });
+            $count++;
+        }
+
+        Log::info("GDPR: Anonymised {$count} contacts (retention: {$setting->retention_months} months)");
+        return $count;
+    }
+
+    public function deleteExpiredEmailLogs(): int
+    {
+        $setting = GdprSetting::getRetentionFor('email_logs');
+        if (!$setting || !$setting->is_enabled) {
+            return 0;
+        }
+
+        $expiryDate = Carbon::now()->subMonths($setting->retention_months);
+        
+        $count = DealEmailLog::where('created_at', '<', $expiryDate)->delete();
+        
+        Log::info("GDPR: Deleted {$count} email logs (retention: {$setting->retention_months} months)");
+        return $count;
+    }
+
+    public function getStatistics(): array
+    {
+        return [
+            'contacts' => [
+                'total' => Contact::count(),
+                'anonymised' => Contact::whereNotNull('anonymised_at')->count(),
+                'pending_retention' => $this->getPendingCount(Contact::class),
+            ],
+            'users' => [
+                'total' => User::count(),
+                'anonymised' => User::whereNotNull('anonymised_at')->count(),
+                'pending_retention' => $this->getPendingCount(User::class),
+            ],
+            'email_logs' => [
+                'total' => DealEmailLog::count(),
+                'retention_enabled' => GdprSetting::getRetentionFor('email_logs')?->is_enabled ?? false,
+            ],
+        ];
+    }
+
+    protected function getPendingCount($model): int
+    {
+        $setting = GdprSetting::getRetentionFor((new $model)->getTable());
+        if (!$setting || !$setting->is_enabled) {
+            return 0;
+        }
+        
+        $expiryDate = Carbon::now()->subMonths($setting->retention_months);
+        
+        return $model::whereNull('anonymised_at')
+            ->where('created_at', '<', $expiryDate)
+            ->count();
+    }
+
+    public function scheduleSoftDeletionForInactiveUsers(int $months = 36): int
+    {
+        $cutoff = Carbon::now()->subMonths($months);
+        
+        $users = User::whereNull('anonymised_at')
+            ->where('last_activity_at', '<', $cutoff)
+            ->whereDoesntHave('deals', function ($query) {
+                $query->whereNotIn('stage', ['closed_lost', 'compliant']);
+            })
+            ->get();
+
+        foreach ($users as $user) {
+            $user->update([
+                'marked_for_deletion_on' => Carbon::now()->addDays(30)->toDateString()
+            ]);
+        }
+
+        return $users->count();
+    }
+}

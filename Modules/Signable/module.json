@@ -1,0 +1,8 @@
+{
+    "name": "Signable",
+    "alias": "signable",
+    "description": "Signable module",
+    "providers": [
+        "Modules\\Signable\\App\\Providers\\SignableServiceProvider"
+    ]
+}
