@@ -7,9 +7,44 @@
     $cols   = $visibleColumns;
     $hasCol = fn(string $key) => in_array($key, $cols);
 
+<<<<<<< HEAD
     $allColumns = collect($this::AVAILABLE_COLUMNS)
         ->groupBy('group', preserveKeys: true)
         ->map(fn ($columns) => $columns->map(fn ($column) => $column['label']));
+=======
+    $allColumns = [
+        'Deal' => [
+            'name'                 => 'Deal Name',
+            'amount'               => 'Amount',
+            'stage'                => 'Stage',
+            'recruitment_agency'   => 'Recruitment Agency',
+            'consultant_name'      => 'Consultant Name',
+            'agency_deal_value'    => 'Agency Deal Value',
+            'margin_agreed'        => 'Margin Agreed',
+            'date_sent'            => 'Date Sent',
+            'date_signed'          => 'Date Signed',
+            'who_signed'           => 'Who Signed',
+            'right_to_work'        => 'Right to Work',
+            'mda_reference_number' => 'MDA Reference',
+            'date_set_up'          => 'Date Set Up',
+            'tax_code'             => 'Tax Code',
+            'created_at'           => 'Created',
+        ],
+        'Owner' => [
+            'owner'       => 'Owner',
+            'owner_email' => 'Owner Email',
+        ],
+        'Contact' => [
+            'contact' => 'Contact',
+        ],
+        'Company' => [
+            'company'        => 'Company',
+            'company_email'  => 'Company Email',
+            'company_phone'  => 'Company Phone',
+            'company_domain' => 'Company Domain',
+        ],
+    ];
+>>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
 
     $colCount = count($cols) + 2; // checkbox + action column
 @endphp

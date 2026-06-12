@@ -21,7 +21,11 @@ new class extends Component {
     #[Computed]
     public function notifications()
     {
+<<<<<<< HEAD
         return auth()->user()?->notifications()->latest()->limit(20)->get() ?? collect();
+=======
+        return auth()->user()->notifications()->latest()->limit(20)->get();
+>>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     }
 
     /*
@@ -33,7 +37,11 @@ new class extends Component {
     #[Computed]
     public function unreadCount(): int
     {
+<<<<<<< HEAD
         return auth()->user()?->unreadNotifications()->count() ?? 0;
+=======
+        return cache()->remember('notifications_unread_' . auth()->id(), now()->addSeconds(5), fn() => auth()->user()->unreadNotifications()->count());
+>>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     }
 
     /*
@@ -44,7 +52,13 @@ new class extends Component {
 
     public function markAsRead(string $id): void
     {
+<<<<<<< HEAD
         auth()->user()?->notifications()->where('id', $id)->first()?->markAsRead();
+=======
+        auth()->user()->notifications()->where('id', $id)->first()?->markAsRead();
+
+        $this->clearNotificationCache();
+>>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
 
         unset($this->notifications);
         unset($this->unreadCount);
@@ -58,6 +72,7 @@ new class extends Component {
 
     public function markAsReadAll(): void
     {
+<<<<<<< HEAD
         $user = auth()->user();
 
         if (! $user) {
@@ -67,14 +82,42 @@ new class extends Component {
         $user->unreadNotifications()->update([
             'read_at' => now(),
         ]);
+=======
+        auth()
+            ->user()
+            ->unreadNotifications()
+            ->update([
+                'read_at' => now(),
+            ]);
+
+        $this->clearNotificationCache();
+>>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
 
         unset($this->notifications);
         unset($this->unreadCount);
     }
+<<<<<<< HEAD
 };
 ?>
 
 <div x-data="{ open: false }" class="relative" wire:poll.30s="refreshNotifications">
+=======
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cache
+    |--------------------------------------------------------------------------
+    */
+
+    protected function clearNotificationCache(): void
+    {
+        cache()->forget('notifications_unread_' . auth()->id());
+    }
+};
+?>
+
+<div x-data="{ open: false }" class="relative" wire:poll.5s="refreshNotifications">
+>>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     {{-- Bell --}}
     <button @click="open = !open" class="relative">
         <flux:icon.bell class="w-5 h-5" />

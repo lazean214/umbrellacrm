@@ -1,7 +1,10 @@
 {{-- components/deals/partials/⚡kanban-card.blade.php --}}
+<<<<<<< HEAD
 @php
     $dealUrl = route('deals.show', ['deal' => $deal['id']]);
 @endphp
+=======
+>>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
 
 <div
     class="relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 rounded-xl p-3.5 flex items-start gap-3 shadow-sm cursor-pointer active:cursor-grabbing group transition-all duration-150 hover:shadow-md"
@@ -25,7 +28,12 @@
             if (e.target.closest('a')) {
                 return;
             }
+<<<<<<< HEAD
             window.location.assign({{ Js::from($dealUrl) }});
+=======
+            // Navigate to deal
+            window.location.href = '{{ route('deals.show', $deal['id']) }}';
+>>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
         }
     }"
     @dragstart="handleDragStart($event)"
@@ -48,7 +56,11 @@
         {{-- Deal name --}}
         <p class="text-sm font-semibold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition truncate mb-2">
             <a 
+<<<<<<< HEAD
                 href="{{ $dealUrl }}"
+=======
+                href="{{ route('deals.show', $deal['id']) }}" 
+>>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
                 class="focus:underline outline-none"
             >
                 {{ $deal['name'] }}
@@ -113,4 +125,8 @@
             </div>
         </div>
     </div>
+<<<<<<< HEAD
 </div>
+=======
+</div>
+>>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c

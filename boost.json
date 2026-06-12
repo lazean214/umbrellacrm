@@ -1,18 +1,26 @@
 {
     "agents": [
+<<<<<<< HEAD
         "codex",
         "cursor",
         "claude_code",
         "antigravity",
         "copilot"
+=======
+        "copilot",
+        "gemini"
+>>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     ],
     "cloud": false,
     "guidelines": true,
     "mcp": true,
     "nightwatch": false,
+<<<<<<< HEAD
     "packages": [
         "spatie/laravel-medialibrary"
     ],
+=======
+>>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     "sail": false,
     "skills": [
         "fortify-development",
@@ -22,6 +30,10 @@
         "livewire-development",
         "pest-testing",
         "tailwindcss-development",
+<<<<<<< HEAD
         "medialibrary-development"
+=======
+        "echo-development"
+>>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
     ]
 }

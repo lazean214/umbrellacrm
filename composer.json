@@ -24,7 +24,11 @@
     },
     "require-dev": {
         "fakerphp/faker": "^1.24",
+<<<<<<< HEAD
         "laravel/boost": "^2.4",
+=======
+        "laravel/boost": "*",
+>>>>>>> 2e63ca614e8ce820dd4ded4c7c30f6ddc83b383c
         "laravel/pail": "^1.2.5",
         "laravel/pao": "^1.0.6",
         "laravel/pint": "^1.27",
